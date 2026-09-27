@@ -7,6 +7,7 @@ mod lang;
 mod lsp;
 #[cfg(target_os = "linux")]
 mod linux_desktop;
+mod search;
 mod settings;
 mod terminal;
 mod theme;

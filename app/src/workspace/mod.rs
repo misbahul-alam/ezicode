@@ -1,4 +1,5 @@
 mod render;
+mod search;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -205,6 +206,26 @@ pub(crate) struct Workspace {
     pub(crate) workspace_files_cache: Option<(PathBuf, Vec<crate::ui::picker::PickerItem>)>,
 
     pub(crate) cached_breadcrumbs: Option<(PathBuf, usize, usize, Vec<crate::ui::breadcrumbs::BreadcrumbItem>)>,
+
+    // ---- Project search (VS Code-style Search view, ripgrep engine) ----
+    pub(crate) search_query_input: Option<Entity<InputState>>,
+    pub(crate) search_replace_input: Option<Entity<InputState>>,
+    pub(crate) search_include_input: Option<Entity<InputState>>,
+    pub(crate) search_case_sensitive: bool,
+    pub(crate) search_whole_word: bool,
+    pub(crate) search_use_regex: bool,
+    pub(crate) search_results: Vec<crate::search::SearchFileResult>,
+    pub(crate) search_total_matches: usize,
+    pub(crate) search_truncated: bool,
+    pub(crate) search_in_progress: bool,
+    pub(crate) search_error: Option<String>,
+    pub(crate) search_elapsed_ms: u64,
+    pub(crate) search_generation: u64,
+    pub(crate) search_collapsed: HashSet<PathBuf>,
+    pub(crate) search_replace_open: bool,
+    /// Jump applied once an async `open_file` finishes (search result click
+    /// on a file that is not open yet).
+    pub(crate) pending_search_jump: Option<(PathBuf, usize, usize)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -470,6 +491,22 @@ impl Workspace {
             picker_confirm_pending: false,
             workspace_files_cache: None,
             cached_breadcrumbs: None,
+            search_query_input: None,
+            search_replace_input: None,
+            search_include_input: None,
+            search_case_sensitive: false,
+            search_whole_word: false,
+            search_use_regex: false,
+            search_results: Vec::new(),
+            search_total_matches: 0,
+            search_truncated: false,
+            search_in_progress: false,
+            search_error: None,
+            search_elapsed_ms: 0,
+            search_generation: 0,
+            search_collapsed: HashSet::new(),
+            search_replace_open: false,
+            pending_search_jump: None,
         }
     }
 
@@ -606,6 +643,7 @@ impl Workspace {
         self.inline_creating = None;
         self.inline_renaming = None;
         self.explorer_clipboard = None;
+        self.clear_search_results();
         self.status = format!("Loading folder {}…", self.root_display);
         let scan_root = path.clone();
         cx.spawn(async move |this, cx| {
@@ -674,6 +712,8 @@ impl Workspace {
         self.workspace_files_cache = None;
         self.git_commit_input = None;
         self.git_commit_pending = false;
+        self.pending_search_jump = None;
+        self.clear_search_results();
 
         // Stop the git poll thread by dropping its poke sender — the thread
         // exits within ~1.5 s when `recv_timeout` reports `Disconnected`.
@@ -1104,6 +1144,10 @@ impl Workspace {
             if activity == Activity::Git {
                 self.ensure_git_commit_input(window, cx);
             }
+            if activity == Activity::Search {
+                self.ensure_search_inputs(window, cx);
+                self.focus_search_query(window, cx);
+            }
         }
         self.status = self.activity.status_label().into();
         cx.notify();
@@ -1119,6 +1163,10 @@ impl Workspace {
         self.activity = activity;
         if activity == Activity::Git {
             self.ensure_git_commit_input(window, cx);
+        }
+        if activity == Activity::Search {
+            self.ensure_search_inputs(window, cx);
+            self.focus_search_query(window, cx);
         }
         self.status = activity.status_label().into();
         cx.notify();
@@ -1206,6 +1254,15 @@ impl Workspace {
             Ok(loaded) => loaded,
             Err(message) => {
                 self.status = message;
+                // A failed open can never satisfy a queued search jump.
+                if self
+                    .pending_search_jump
+                    .as_ref()
+                    .map(|(p, _, _)| p == &path)
+                    .unwrap_or(false)
+                {
+                    self.pending_search_jump = None;
+                }
                 cx.notify();
                 return;
             }
@@ -1311,6 +1368,9 @@ impl Workspace {
         } else {
             format!("{} (plain text — large file)", display_name(&path))
         };
+        // A search-result click on a closed file queued `pending_search_jump`:
+        // it is consumed in `render` (which owns a `&mut Window` for cursor
+        // placement) once this tab is the active one.
         cx.notify();
     }
 
