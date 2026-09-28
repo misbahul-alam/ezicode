@@ -1,21 +1,3 @@
-# ============================================================================
-# TEMPORARY HAND-OFF FILE — rename/move to:  .github/workflows/ci.yml
-#
-# This workflow could not be added to .github/workflows/ by the automated
-# PR because the GitHub App behind it has no "Workflows" permission (GitHub
-# rejects any bot push that creates or changes files in that directory).
-#
-# Manual step (one time): move this file into place and commit:
-#
-#     git mv ci-workflow.text .github/workflows/ci.yml
-#     git commit -m "ci: add fmt/check/clippy workflow"
-#     git push
-#
-# Everything below this header is the workflow verbatim — no other edits
-# needed. Delete this header comment too if you like; it is valid YAML
-# either way.
-# ============================================================================
-
 # CI for every push to main and every pull request.
 #
 # Scope note: `cargo fmt --all`, `cargo check` and `cargo clippy` all operate on

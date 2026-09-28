@@ -33,8 +33,8 @@ pub(crate) fn render_status_bar(
     diagnostic_counts: Option<(usize, usize)>,
     lang: Option<&str>,
     lsp: LspIndicator,
-    /// Whether the right-hand terminal dock is open (drives the icon's
-    /// active styling, like Zed's dock toggles in the status bar).
+    // Whether the right-hand terminal dock is open (drives the icon's
+    // active styling, like Zed's dock toggles in the status bar).
     right_terminal_open: bool,
     t: &Colors,
 ) -> impl IntoElement {
