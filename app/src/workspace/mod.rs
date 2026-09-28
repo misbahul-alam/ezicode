@@ -1401,7 +1401,7 @@ impl Workspace {
         cx.notify();
     }
 
-    pub(crate) fn save(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 
         let tab = match self.active_tab_mut() {
             Some(t) => t,
@@ -1422,12 +1422,96 @@ impl Workspace {
         }
 
         let path = tab.path.clone().unwrap();
-        let Some(editor) = &tab.editor else {
+        let Some(editor) = tab.editor.clone() else {
             return;
         };
+        let language = tab.language().map(|lang| lang.to_string());
+
+        // Format-on-save (Zed's `format_on_save`, `editor.formatOnSave` in
+        // settings.json): when enabled and a language server is attached,
+        // apply its `textDocument/formatting` edits to the buffer before
+        // writing to disk. Anything missing — no language, no server, no
+        // formatting capability — falls through to a plain save, so Ctrl+S
+        // is never blocked on a formatter.
+        let formatter = if self.settings.editor_format_on_save
+            == crate::settings::FormatOnSaveMode::On
+        {
+            language.and_then(|lang| self.lsp.lock().unwrap().client_for(&lang))
+        } else {
+            None
+        };
+        if let Some(client) = formatter {
+            self.format_then_save(path, editor, client, window, cx);
+            cx.notify();
+            return;
+        }
+
         let text = editor.read(cx).value().to_string();
         self.write_file_async(path, text, "Saved", cx);
         cx.notify();
+    }
+
+    /// Format-on-save backend: request `textDocument/formatting` for a
+    /// snapshot of the buffer, apply the edits, then write the result to
+    /// disk via the normal [`Workspace::write_file_async`] path (so dirty
+    /// tracking, LSP `didSave`, git status and settings reloading all behave
+    /// exactly like a plain save).
+    ///
+    /// The request runs on the background executor; if the user kept typing
+    /// while it was in flight, the snapshot is stale and the edits are
+    /// dropped — the *current* text is saved unformatted instead. Formatting
+    /// must never clobber concurrent edits, and a save must never be lost.
+    fn format_then_save(
+        &mut self,
+        path: PathBuf,
+        editor: Entity<InputState>,
+        client: Arc<crate::lsp::client::LspClient>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let text = editor.read(cx).value().to_string();
+        let tab_size = self.settings.editor_tab_size as u32;
+        let display = display_name(&path);
+        self.status = format!("Formatting {display}…");
+        cx.notify();
+
+        let editor_weak = editor.downgrade();
+        cx.spawn_in(window, async move |this, cx| {
+            // `background_spawn` needs a 'static future, so the request gets
+            // its own copies of the snapshot and path; `text` and `path`
+            // stay owned by this task for the stale-check and the write.
+            let req_text = text.clone();
+            let req_path = path.clone();
+            let edits = cx
+                .background_spawn(async move {
+                    client.format_document(&req_path, &req_text, tab_size)
+                })
+                .await;
+            // Apply the edits to the live buffer (guarded against a stale
+            // snapshot), then persist whatever the buffer now contains.
+            let saved_text: Option<String> = editor_weak
+                .update_in(cx, |state, window, cx| {
+                    let current = state.value().to_string();
+                    match edits {
+                        Some(edits) if !edits.is_empty() && current == text => {
+                            state.apply_lsp_edits(&edits, window, cx);
+                            Some(state.value().to_string())
+                        }
+                        _ => Some(current),
+                    }
+                })
+                .ok()
+                .flatten();
+            let _ = this.update(cx, |workspace, cx| {
+                match saved_text {
+                    Some(text) => workspace.write_file_async(path, text, "Saved", cx),
+                    // The tab was closed while formatting; nothing to save.
+                    None => workspace.status = format!("{display} was closed while formatting"),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn write_file_async(
@@ -2972,6 +3056,8 @@ impl Workspace {
             return;
         };
         let text = editor.read(cx).value().to_string();
+        // Honor `editor.tabSize` (see LspClient::format_document).
+        let tab_size = self.settings.editor_tab_size as u32;
 
         self.status = "Formatting…".into();
         cx.notify();
@@ -2979,7 +3065,7 @@ impl Workspace {
         let display = display_name(&path);
         cx.spawn_in(window, async move |this, cx| {
             let edits = cx
-                .background_spawn(async move { client.format_document(&path, &text) })
+                .background_spawn(async move { client.format_document(&path, &text, tab_size) })
                 .await;
             match edits {
                 Some(edits) if !edits.is_empty() => {
@@ -3063,6 +3149,11 @@ impl Workspace {
         if tab.is_settings || !tab.dirty || tab.path.is_none() {
             return false;
         }
+        // Auto-save deliberately skips format-on-save: formatting mid-typing
+        // (the `afterDelay` mode fires every second) would fight the user
+        // for the buffer. `save_tab_quiet` is also synchronous by design —
+        // unifying it with the async format-then-save path is described in
+        // docs/architecture-themes-syntax-formatting.md.
         let path = tab.path.clone().unwrap();
         let Some(editor) = &tab.editor else {
             return false;

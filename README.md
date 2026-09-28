@@ -55,7 +55,7 @@ _Combining the raw speed and hardware-accelerated rendering of Zed with the frie
 
 - **Automatic Server Provisioning**: Node-based language servers install themselves silently on demand into a private sandboxed directory (`~/.local/share/ezicode/language-servers/`)—no global `npm install` required.
 - **Toolchain Discovery**: Auto-detects local system compilers and language servers installed on `PATH` (e.g., `rust-analyzer`, `gopls`, `clangd`, `basedpyright`).
-- **Rich LSP Features**: Real-time diagnostics (errors & warnings), code completion popovers, hover tooltips, go-to-definition (`F12`), and document formatting (`Shift+Alt+F`).
+- **Rich LSP Features**: Real-time diagnostics (errors & warnings), code completion popovers, hover tooltips, go-to-definition (`F12`), and document formatting (`Shift+Alt+F`, plus optional format-on-save via `editor.formatOnSave`).
 
 ### 🐙 Built-In Git & Interactive Diff Viewer
 
@@ -73,6 +73,7 @@ _Combining the raw speed and hardware-accelerated rendering of Zed with the frie
 ### 🎨 Zed-Compatible Themes & Typography
 
 - **Exact Zed JSON Themes**: Shipped with **GitHub Dark**, **Ayu** (Dark, Mirage, Light), and **Gruvbox** families, covering both UI chrome tokens and 46 Tree-sitter syntax tokens.
+- **User Themes, No Recompile**: Drop any Zed-format theme JSON into `themes/` next to `settings.json` (e.g. `~/.config/ezicode/themes/`) — both full theme families and single-theme files load at startup, and a theme named like a built-in overrides it. See [`docs/sample-theme.json`](docs/sample-theme.json) for a complete, annotated example that also works in Zed itself.
 - **Curated Typography**: Pre-bundled with **IBM Plex Sans** (for UI) and **Lilex** (for the code buffer and terminal), automatically registered with GPUI at launch.
 - **Rich File Icons**: Zed's complete SVG icon theme mapping file extensions to high-fidelity icons.
 
@@ -321,7 +322,8 @@ via `github-custom-runners`.
   "editor.tabSize": 4,
   "editor.autoSave": "afterDelay",
   "editor.autoSaveDelay": 1000,
-  "workbench.theme": "GitHub Dark",
+  "editor.formatOnSave": "on",
+  "workbench.colorTheme": "GitHub Dark",
   "terminal.fontSize": 13.5
 }
 ```
@@ -330,10 +332,15 @@ via `github-custom-runners`.
 
 - `editor.fontSize`: Font size in pixels for the code buffer (default: `14.5`).
 - `editor.fontFamily`: Custom monospace font family (falls back to bundled `Lilex`).
-- `editor.tabSize`: Number of spaces per tab indent (default: `4`).
+- `editor.tabSize`: Number of spaces per tab indent (default: `4`). Also sent to language servers as the formatting tab size.
 - `editor.autoSave`: Auto-save behavior: `"off"`, `"afterDelay"`, or `"onFocusChange"`.
 - `editor.autoSaveDelay`: Debounce duration in milliseconds when `"afterDelay"` is chosen (default: `1000`).
-- `workbench.theme`: Active color theme (e.g. `"GitHub Dark"`, `"Ayu Dark"`, `"Gruvbox Dark"`).
+- `editor.formatOnSave`: Ask the buffer's language server to format the document before saving (`"off"` by default; `Shift+Alt+F` always formats on demand).
+- `workbench.colorTheme`: Active color theme (e.g. `"GitHub Dark"`, `"Ayu Dark"`, `"Gruvbox Dark"`, or the name of any theme you dropped into the themes directory).
+
+### Custom Themes
+
+Themes are Zed-format JSON files. The built-in families (GitHub, Ayu, Gruvbox) are embedded in the binary; your own themes load from the `themes/` subdirectory of the config directory (`~/.config/ezicode/themes/` on Linux, `%APPDATA%\ezicode\themes\` on Windows, `~/Library/Application Support/ezicode/themes/` on macOS — created on first run). Any theme family or single-theme file placed there appears in the Settings page and command palette after the next launch, and a theme with the same name as a built-in replaces it. A minimal theme only needs `background`, `editor.background` and `editor.foreground` — every other token falls back through a derivation chain to a light/dark base palette. The full architecture is documented in [`docs/architecture-themes-syntax-formatting.md`](docs/architecture-themes-syntax-formatting.md), and [`docs/sample-theme.json`](docs/sample-theme.json) is a complete example.
 
 ---
 
@@ -360,6 +367,7 @@ ezicode/
 │       ├── ui/               # UI components: tabs, status bar, diffs, settings
 │       └── workspace/        # Main workspace entity, state management & render loop
 ├── components/               # Vendored and optimized GPUI components
+├── docs/                     # Architecture docs & the sample theme file
 ├── gpui-terminal/            # Alacritty terminal emulator bindings for GPUI
 ├── run.cmd                   # Windows developer helper script
 ├── run.sh                    # Unix developer helper script

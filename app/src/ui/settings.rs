@@ -3,7 +3,7 @@ use gpui::{
 };
 use gpui_component::scroll::ScrollableElement;
 
-use crate::settings::{AutoSaveMode, Settings};
+use crate::settings::{AutoSaveMode, FormatOnSaveMode, Settings};
 use crate::theme::{self, Colors};
 use crate::workspace::Workspace;
 
@@ -339,6 +339,7 @@ fn render_editor_section(
     let auto_save = settings.editor_auto_save;
     let auto_save_delay = settings.editor_auto_save_delay;
     let tab_size = settings.editor_tab_size;
+    let format_on_save = settings.editor_format_on_save;
 
     div()
         .flex()
@@ -566,6 +567,44 @@ fn render_editor_section(
                                     t,
                                     cx.listener(|this, _, _, cx| {
                                         this.settings.editor_tab_size = 8;
+                                        let _ = this.settings.save();
+                                        cx.notify();
+                                    }),
+                                ),
+                            ),
+                        t,
+                    ),
+                )
+                // Format on save item
+                .child(
+                    setting_row(
+                        "Editor: Format On Save",
+                        format_on_save.description(),
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
+                            .child(
+                                btn_pill(
+                                    "format-on-save-off",
+                                    "off",
+                                    format_on_save == FormatOnSaveMode::Off,
+                                    t,
+                                    cx.listener(|this, _, _, cx| {
+                                        this.settings.editor_format_on_save = FormatOnSaveMode::Off;
+                                        let _ = this.settings.save();
+                                        cx.notify();
+                                    }),
+                                ),
+                            )
+                            .child(
+                                btn_pill(
+                                    "format-on-save-on",
+                                    "on",
+                                    format_on_save == FormatOnSaveMode::On,
+                                    t,
+                                    cx.listener(|this, _, _, cx| {
+                                        this.settings.editor_format_on_save = FormatOnSaveMode::On;
                                         let _ = this.settings.save();
                                         cx.notify();
                                     }),
