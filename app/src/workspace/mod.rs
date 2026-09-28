@@ -34,6 +34,23 @@ pub struct OpenTab {
     pub is_settings: bool,
 
     pub diff: Option<DiffTab>,
+
+    pub language_override: Option<String>,
+}
+
+impl OpenTab {
+    pub fn language(&self) -> Option<&str> {
+        if let Some(override_lang) = &self.language_override {
+            return Some(override_lang.as_str());
+        }
+        if let Some(path) = &self.path {
+            return lang::language_for(path);
+        }
+        if self.untitled {
+            return Some("text");
+        }
+        None
+    }
 }
 
 #[derive(Clone)]
@@ -697,7 +714,7 @@ impl Workspace {
 
         for tab in &self.tabs {
             if let Some(p) = &tab.path {
-                if let Some(lang_id) = lang::language_for(p) {
+                if let Some(lang_id) = tab.language() {
                     self.lsp.lock().unwrap().close_document(p, lang_id);
                 }
             }
@@ -851,6 +868,7 @@ impl Workspace {
             preview: false,
             is_settings: false,
             diff: None,
+            language_override: None,
         });
         self.active_tab = self.tabs.len() - 1;
         self.status = "Untitled file — Ctrl+S to save".into();
@@ -1324,10 +1342,16 @@ impl Workspace {
                     }
                 }
                 {
+                    let current_lang = this
+                        .tabs
+                        .iter()
+                        .find(|t| t.path.as_ref() == Some(&path_clone))
+                        .and_then(|t| t.language())
+                        .unwrap_or(lang_str.as_str());
                     let mut lsp = this.lsp.lock().unwrap();
-                    if lsp.has_client(&lang_str) {
+                    if lsp.has_client(current_lang) {
                         let text = editor_ent.read(cx).value().to_string();
-                        lsp.change_document(&path_clone, &lang_str, text);
+                        lsp.change_document(&path_clone, current_lang, text);
                     }
                 }
 
@@ -1348,6 +1372,8 @@ impl Workspace {
                 tab.untitled = false;
                 tab.preview = true;
                 tab.is_settings = false;
+                tab.diff = None;
+                tab.language_override = None;
                 tab.editor = Some(editor);
             }
         } else {
@@ -1360,6 +1386,7 @@ impl Workspace {
                 preview: true,
                 is_settings: false,
                 diff: None,
+                language_override: None,
             });
             self.active_tab = self.tabs.len() - 1;
         }
@@ -1434,7 +1461,13 @@ impl Workspace {
                             }
                         }
                         // Tell the server the file hit disk.
-                        if let Some(lang_id) = lang::language_for(&path) {
+                        let lang_id = workspace
+                            .tabs
+                            .iter()
+                            .find(|t| t.path.as_ref() == Some(&path))
+                            .and_then(|t| t.language())
+                            .or_else(|| lang::language_for(&path));
+                        if let Some(lang_id) = lang_id {
                             workspace
                                 .lsp
                                 .lock()
@@ -2413,19 +2446,19 @@ impl Workspace {
             .to_vec();
 
         // Collect first: attaching borrows `self` mutably.
-        let targets: Vec<(PathBuf, &'static str, Entity<InputState>)> = self
+        let targets: Vec<(PathBuf, String, Entity<InputState>)> = self
             .tabs
             .iter()
             .filter_map(|tab| {
                 let path = tab.path.clone()?;
                 let editor = tab.editor.clone()?;
-                let lang = lang::language_for(&path)?;
-                languages.contains(&lang).then_some((path, lang, editor))
+                let lang = tab.language()?.to_string();
+                languages.iter().any(|&l| l == lang).then_some((path, lang, editor))
             })
             .collect();
 
         for (path, lang, editor) in targets {
-            self.attach_language_server(&path, lang, &editor, cx);
+            self.attach_language_server(&path, &lang, &editor, cx);
         }
     }
 
@@ -2820,6 +2853,7 @@ impl Workspace {
             preview: false,
             is_settings: false,
             diff: Some(diff_tab),
+            language_override: None,
         });
         self.active_tab = self.tabs.len() - 1;
         self.status = if staged {
@@ -2925,14 +2959,14 @@ impl Workspace {
             let Some(editor) = tab.editor.clone() else {
                 return;
             };
-            let Some(lang_id) = lang::language_for(&path) else {
-                self.status = format!("{} has no language server", display_name(&path));
+            let Some(lang_id) = tab.language().map(|s| s.to_string()) else {
+                self.status = format!("{} has no language mode", display_name(&path));
                 cx.notify();
                 return;
             };
             (path, editor, lang_id)
         };
-        let Some(client) = self.lsp.lock().unwrap().client_for(lang_id) else {
+        let Some(client) = self.lsp.lock().unwrap().client_for(&lang_id) else {
             self.status = format!("No language server running for {lang_id}");
             cx.notify();
             return;
@@ -2988,6 +3022,7 @@ impl Workspace {
                 preview: false,
                 is_settings: true,
                 diff: None,
+                language_override: None,
             });
             self.active_tab = self.tabs.len() - 1;
         }
@@ -3086,7 +3121,7 @@ impl Workspace {
     pub(crate) fn close_tab(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(closed_tab) = self.tabs.get(index) {
             if let Some(p) = &closed_tab.path {
-                if let Some(lang_id) = lang::language_for(p) {
+                if let Some(lang_id) = closed_tab.language() {
                     self.lsp.lock().unwrap().close_document(p, lang_id);
                 }
             }
@@ -3130,7 +3165,7 @@ impl Workspace {
         if index < self.tabs.len() {
             if let Some(closed_tab) = self.tabs.get(index) {
                 if let Some(p) = &closed_tab.path {
-                    if let Some(lang_id) = lang::language_for(p) {
+                    if let Some(lang_id) = closed_tab.language() {
                         self.lsp.lock().unwrap().close_document(p, lang_id);
                     }
                 }
@@ -3388,6 +3423,93 @@ impl Workspace {
         cx.notify();
     }
 
+    pub(crate) fn active_tab_language(&self) -> Option<&str> {
+        self.tabs.get(self.active_tab).and_then(|t| t.language())
+    }
+
+    pub(crate) fn toggle_language_selector(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(p) = &self.picker {
+            if p.kind == crate::ui::picker::PickerKind::LanguageSelector {
+                self.close_modal(window, cx);
+                return;
+            }
+        }
+
+        let current_lang = self.active_tab_language();
+        let items = crate::ui::picker::language_selector_items(current_lang);
+        let input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Select Language Mode (e.g. JavaScript, Python, Rust, Go...)")
+        });
+
+        cx.subscribe(&input, |this, _state, event: &InputEvent, cx| {
+            match event {
+                InputEvent::Change => {
+                    this.on_picker_input_changed(cx);
+                }
+                InputEvent::PressEnter { .. } => {
+                    this.picker_confirm_pending = true;
+                    cx.notify();
+                }
+                _ => {}
+            }
+        })
+        .detach();
+
+        input.update(cx, |this, cx| {
+            this.focus(window, cx);
+        });
+
+        self.picker = Some(crate::ui::picker::PickerState::new(
+            crate::ui::picker::PickerKind::LanguageSelector,
+            input,
+            items,
+        ));
+        cx.notify();
+    }
+
+    pub(crate) fn set_active_tab_language(
+        &mut self,
+        lang_id: &str,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let tab_idx = self.active_tab;
+        let Some(tab) = self.tabs.get_mut(tab_idx) else {
+            return;
+        };
+
+        let old_lang = tab.language().map(|s| s.to_string());
+        tab.language_override = Some(lang_id.to_string());
+
+        if let Some(editor) = tab.editor.clone() {
+            // 1. Update syntax highlighting for the current buffer
+            let lang_owned = lang_id.to_string();
+            editor.update(cx, move |state, cx| {
+                state.set_highlighter(lang_owned, cx);
+            });
+
+            // 2. Switch LSP language server
+            if let Some(path) = tab.path.clone() {
+                if let Some(old) = &old_lang {
+                    if old != lang_id {
+                        let mut lsp = self.lsp.lock().unwrap();
+                        lsp.close_document(&path, old);
+                    }
+                }
+                self.attach_language_server(&path, lang_id, &editor, cx);
+            }
+        }
+
+        let lang_display = crate::lang::language_name(lang_id);
+        if let Some(server) = crate::lang::lsp_server_for(lang_id) {
+            self.status = format!("Language mode changed to {lang_display} (LSP: {server})");
+        } else {
+            self.status = format!("Language mode changed to {lang_display}");
+        }
+        cx.notify();
+    }
+
     pub(crate) fn close_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.picker.take().is_some() {
             self.focus_active_editor_or_self(window, cx);
@@ -3453,6 +3575,12 @@ impl Workspace {
                 let val = picker.input.read(cx).value().to_string();
                 self.execute_goto_line(&val, window, cx);
             }
+            crate::ui::picker::PickerKind::LanguageSelector => {
+                if let Some(item) = picker.selected_item() {
+                    let lang_id = item.id.clone();
+                    self.set_active_tab_language(&lang_id, window, cx);
+                }
+            }
         }
         self.focus_active_editor_or_self(window, cx);
         cx.notify();
@@ -3477,6 +3605,7 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         match cmd_id {
+            "language.change_mode" => self.toggle_language_selector(window, cx),
             "file.new" => self.new_file(window, cx),
             "file.open" => self.open_file_dialog(window, cx),
             "file.open_folder" => self.open_folder_dialog(window, cx),

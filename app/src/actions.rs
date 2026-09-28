@@ -49,6 +49,7 @@ actions!(
         ToggleFileFinder,
         ToggleCommandPalette,
         ToggleGoToLine,
+        ToggleLanguageSelector,
         CloseModal
     ]
 );

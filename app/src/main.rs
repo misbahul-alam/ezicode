@@ -111,6 +111,7 @@ fn main() {
                 KeyBinding::new("ctrl-p", ToggleFileFinder, None),
                 KeyBinding::new("ctrl-shift-p", ToggleCommandPalette, None),
                 KeyBinding::new("ctrl-g", ToggleGoToLine, None),
+                KeyBinding::new("ctrl-k m", ToggleLanguageSelector, None),
                 KeyBinding::new("escape", CloseModal, None),
 
                 KeyBinding::new("ctrl-w", CloseTab, None),
