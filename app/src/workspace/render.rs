@@ -4,8 +4,6 @@ use gpui::{
 use gpui_component::input::{Input, RopeExt as _};
 
 use crate::actions::*;
-use crate::lang;
-
 use crate::theme::Colors;
 use crate::ui;
 use crate::workspace::CreatingKind;

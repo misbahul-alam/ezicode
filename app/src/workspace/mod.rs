@@ -3471,7 +3471,7 @@ impl Workspace {
     pub(crate) fn set_active_tab_language(
         &mut self,
         lang_id: &str,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let tab_idx = self.active_tab;
@@ -3484,8 +3484,9 @@ impl Workspace {
 
         if let Some(editor) = tab.editor.clone() {
             // 1. Update syntax highlighting for the current buffer
-            editor.update(cx, |state, cx| {
-                state.set_highlighter(lang_id, cx);
+            let lang_owned = lang_id.to_string();
+            editor.update(cx, move |state, cx| {
+                state.set_highlighter(lang_owned, cx);
             });
 
             // 2. Switch LSP language server

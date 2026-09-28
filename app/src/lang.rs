@@ -251,7 +251,7 @@ pub fn language_info(id: &str) -> Option<&'static LanguageInfo> {
     LANGUAGES.iter().find(|l| l.id.eq_ignore_ascii_case(id))
 }
 
-pub fn language_name(id: &str) -> &'static str {
+pub fn language_name(id: &str) -> &str {
     language_info(id).map(|l| l.name).unwrap_or(id)
 }
 
