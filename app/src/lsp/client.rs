@@ -687,105 +687,107 @@ impl LspClient {
 
     #[allow(deprecated)]
     fn send_initialize(&self, root_dir: Option<&Path>) {
-        let mut params = InitializeParams::default();
-        params.process_id = Some(std::process::id());
-        params.root_uri = root_dir.and_then(path_to_uri);
-        params.capabilities = ClientCapabilities {
-            text_document: Some(TextDocumentClientCapabilities {
-                publish_diagnostics: Some(PublishDiagnosticsClientCapabilities {
-                    related_information: Some(true),
-                    version_support: Some(true),
-                    code_description_support: Some(true),
-                    data_support: Some(true),
+        let mut params = InitializeParams {
+            process_id: Some(std::process::id()),
+            root_uri: root_dir.and_then(path_to_uri),
+            capabilities: ClientCapabilities {
+                text_document: Some(TextDocumentClientCapabilities {
+                    publish_diagnostics: Some(PublishDiagnosticsClientCapabilities {
+                        related_information: Some(true),
+                        version_support: Some(true),
+                        code_description_support: Some(true),
+                        data_support: Some(true),
+                        ..Default::default()
+                    }),
+                    synchronization: Some(TextDocumentSyncClientCapabilities {
+                        dynamic_registration: Some(true),
+                        will_save: Some(false),
+                        will_save_wait_until: Some(false),
+                        did_save: Some(true),
+                    }),
+                    completion: Some(lsp_types::CompletionClientCapabilities {
+                        completion_item: Some(lsp_types::CompletionItemCapability {
+                            snippet_support: Some(true),
+                            documentation_format: Some(vec![lsp_types::MarkupKind::Markdown]),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }),
+                    hover: Some(lsp_types::HoverClientCapabilities {
+                        content_format: Some(vec![lsp_types::MarkupKind::Markdown]),
+                        ..Default::default()
+                    }),
+                    definition: Some(lsp_types::GotoCapability {
+                        dynamic_registration: Some(true),
+                        link_support: Some(true),
+                    }),
+                    code_action: Some(lsp_types::CodeActionClientCapabilities {
+                        code_action_literal_support: Some(lsp_types::CodeActionLiteralSupport {
+                            code_action_kind: lsp_types::CodeActionKindLiteralSupport {
+                                value_set: vec![
+                                    lsp_types::CodeActionKind::QUICKFIX.as_str().to_string(),
+                                    lsp_types::CodeActionKind::REFACTOR.as_str().to_string(),
+                                    lsp_types::CodeActionKind::REFACTOR_EXTRACT
+                                        .as_str()
+                                        .to_string(),
+                                    lsp_types::CodeActionKind::REFACTOR_INLINE
+                                        .as_str()
+                                        .to_string(),
+                                    lsp_types::CodeActionKind::REFACTOR_REWRITE
+                                        .as_str()
+                                        .to_string(),
+                                    lsp_types::CodeActionKind::SOURCE.as_str().to_string(),
+                                    lsp_types::CodeActionKind::SOURCE_ORGANIZE_IMPORTS
+                                        .as_str()
+                                        .to_string(),
+                                ],
+                            },
+                        }),
+                        ..Default::default()
+                    }),
+                    formatting: Some(lsp_types::DocumentFormattingClientCapabilities {
+                        dynamic_registration: Some(true),
+                    }),
                     ..Default::default()
                 }),
-                synchronization: Some(TextDocumentSyncClientCapabilities {
-                    dynamic_registration: Some(true),
-                    will_save: Some(false),
-                    will_save_wait_until: Some(false),
-                    did_save: Some(true),
-                }),
-                completion: Some(lsp_types::CompletionClientCapabilities {
-                    completion_item: Some(lsp_types::CompletionItemCapability {
-                        snippet_support: Some(true),
-                        documentation_format: Some(vec![lsp_types::MarkupKind::Markdown]),
+
+                workspace: Some(lsp_types::WorkspaceClientCapabilities {
+                    configuration: Some(true),
+                    did_change_configuration: Some(
+                        lsp_types::DidChangeConfigurationClientCapabilities {
+                            dynamic_registration: Some(true),
+                        },
+                    ),
+                    did_change_watched_files: Some(
+                        lsp_types::DidChangeWatchedFilesClientCapabilities {
+                            dynamic_registration: Some(true),
+                            relative_pattern_support: Some(false),
+                        },
+                    ),
+                    workspace_folders: Some(true),
+                    apply_edit: Some(true),
+                    execute_command: Some(lsp_types::DynamicRegistrationClientCapabilities {
+                        dynamic_registration: Some(true),
+                    }),
+                    symbol: Some(lsp_types::WorkspaceSymbolClientCapabilities {
+                        dynamic_registration: Some(true),
                         ..Default::default()
                     }),
                     ..Default::default()
                 }),
-                hover: Some(lsp_types::HoverClientCapabilities {
-                    content_format: Some(vec![lsp_types::MarkupKind::Markdown]),
-                    ..Default::default()
-                }),
-                definition: Some(lsp_types::GotoCapability {
-                    dynamic_registration: Some(true),
-                    link_support: Some(true),
-                }),
-                code_action: Some(lsp_types::CodeActionClientCapabilities {
-                    code_action_literal_support: Some(lsp_types::CodeActionLiteralSupport {
-                        code_action_kind: lsp_types::CodeActionKindLiteralSupport {
-                            value_set: vec![
-                                lsp_types::CodeActionKind::QUICKFIX.as_str().to_string(),
-                                lsp_types::CodeActionKind::REFACTOR.as_str().to_string(),
-                                lsp_types::CodeActionKind::REFACTOR_EXTRACT
-                                    .as_str()
-                                    .to_string(),
-                                lsp_types::CodeActionKind::REFACTOR_INLINE
-                                    .as_str()
-                                    .to_string(),
-                                lsp_types::CodeActionKind::REFACTOR_REWRITE
-                                    .as_str()
-                                    .to_string(),
-                                lsp_types::CodeActionKind::SOURCE.as_str().to_string(),
-                                lsp_types::CodeActionKind::SOURCE_ORGANIZE_IMPORTS
-                                    .as_str()
-                                    .to_string(),
-                            ],
-                        },
-                    }),
-                    ..Default::default()
-                }),
-                formatting: Some(lsp_types::DocumentFormattingClientCapabilities {
-                    dynamic_registration: Some(true),
-                }),
-                ..Default::default()
-            }),
 
-            workspace: Some(lsp_types::WorkspaceClientCapabilities {
-                configuration: Some(true),
-                did_change_configuration: Some(
-                    lsp_types::DidChangeConfigurationClientCapabilities {
-                        dynamic_registration: Some(true),
-                    },
-                ),
-                did_change_watched_files: Some(
-                    lsp_types::DidChangeWatchedFilesClientCapabilities {
-                        dynamic_registration: Some(true),
-                        relative_pattern_support: Some(false),
-                    },
-                ),
-                workspace_folders: Some(true),
-                apply_edit: Some(true),
-                execute_command: Some(lsp_types::DynamicRegistrationClientCapabilities {
-                    dynamic_registration: Some(true),
-                }),
-                symbol: Some(lsp_types::WorkspaceSymbolClientCapabilities {
-                    dynamic_registration: Some(true),
+                window: Some(lsp_types::WindowClientCapabilities {
+                    work_done_progress: Some(true),
                     ..Default::default()
                 }),
                 ..Default::default()
-            }),
-
-            window: Some(lsp_types::WindowClientCapabilities {
-                work_done_progress: Some(true),
-                ..Default::default()
+            },
+            client_info: Some(lsp_types::ClientInfo {
+                name: "ezicode".into(),
+                version: Some("0.1.0".into()),
             }),
             ..Default::default()
         };
-        params.client_info = Some(lsp_types::ClientInfo {
-            name: "ezicode".into(),
-            version: Some("0.1.0".into()),
-        });
 
         if let Some(root) = root_dir {
             if let Some(uri) = path_to_uri(root) {
@@ -1319,13 +1321,15 @@ impl CodeActionProvider for LspCodeActionProvider {
                 {
                     let text_edits = text_edits.clone();
                     let state = state.downgrade();
-                    let _ = window.spawn(cx, async move |cx| {
-                        if let Some(state) = state.upgrade() {
-                            let _ = state.update_in(cx, |state, window, cx| {
-                                state.apply_lsp_edits(&text_edits, window, cx);
-                            });
-                        }
-                    });
+                    window
+                        .spawn(cx, async move |cx| {
+                            if let Some(state) = state.upgrade() {
+                                let _ = state.update_in(cx, |state, window, cx| {
+                                    state.apply_lsp_edits(&text_edits, window, cx);
+                                });
+                            }
+                        })
+                        .detach();
                 }
             }
         }

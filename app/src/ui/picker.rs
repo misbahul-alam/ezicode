@@ -99,7 +99,7 @@ impl PickerState {
             }
         }
 
-        scored.sort_by(|a, b| b.score.cmp(&a.score));
+        scored.sort_by_key(|a| std::cmp::Reverse(a.score));
         self.filtered_items = scored.into_iter().take(40).collect();
         self.selected_index = 0;
     }
@@ -196,7 +196,7 @@ pub fn scan_workspace_files(root: &Path, recent_files: &[PathBuf]) -> Vec<Picker
         .hidden(true)
         .git_ignore(true)
         .filter_entry(|entry| {
-            if entry.file_type().map_or(false, |ft| ft.is_dir()) {
+            if entry.file_type().is_some_and(|ft| ft.is_dir()) {
                 let name = entry.file_name().to_string_lossy();
                 !is_ignored_scan_dir(&name)
             } else {
@@ -205,49 +205,47 @@ pub fn scan_workspace_files(root: &Path, recent_files: &[PathBuf]) -> Vec<Picker
         })
         .build();
 
-    for result in walker {
-        if let Ok(entry) = result {
-            if entry.file_type().map_or(false, |ft| ft.is_file()) {
-                let path = entry.path();
-                let rel = path.strip_prefix(root).unwrap_or(path).to_path_buf();
-                if !seen.insert(rel) {
-                    continue;
-                }
-                let file_name = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("")
-                    .to_string();
-                let relative_dir = path
-                    .strip_prefix(root)
-                    .ok()
-                    .and_then(|p| p.parent())
-                    .map(|p| {
-                        let s = p.to_string_lossy();
-                        #[cfg(windows)]
-                        {
-                            s.replace('/', "\\")
-                        }
-                        #[cfg(not(windows))]
-                        {
-                            s.to_string()
-                        }
-                    })
-                    .filter(|s| !s.is_empty());
-                let icon = crate::file_icons::icon_for(path).to_string();
-                items.push(PickerItem {
-                    id: path.to_string_lossy().to_string(),
-                    title: file_name,
-                    subtitle: relative_dir,
-                    icon: Some(icon),
-                    shortcut: None,
-                    is_recent: false,
-                    score: 0,
-                });
+    for entry in walker.flatten() {
+        if entry.file_type().is_some_and(|ft| ft.is_file()) {
+            let path = entry.path();
+            let rel = path.strip_prefix(root).unwrap_or(path).to_path_buf();
+            if !seen.insert(rel) {
+                continue;
+            }
+            let file_name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            let relative_dir = path
+                .strip_prefix(root)
+                .ok()
+                .and_then(|p| p.parent())
+                .map(|p| {
+                    let s = p.to_string_lossy();
+                    #[cfg(windows)]
+                    {
+                        s.replace('/', "\\")
+                    }
+                    #[cfg(not(windows))]
+                    {
+                        s.to_string()
+                    }
+                })
+                .filter(|s| !s.is_empty());
+            let icon = crate::file_icons::icon_for(path).to_string();
+            items.push(PickerItem {
+                id: path.to_string_lossy().to_string(),
+                title: file_name,
+                subtitle: relative_dir,
+                icon: Some(icon),
+                shortcut: None,
+                is_recent: false,
+                score: 0,
+            });
 
-                if items.len() >= 15_000 {
-                    break;
-                }
+            if items.len() >= 15_000 {
+                break;
             }
         }
     }

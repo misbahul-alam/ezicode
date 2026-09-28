@@ -853,10 +853,7 @@ fn resize_handle(kind: ResizeKind, t: &Colors, cx: &mut Context<Workspace>) -> i
                         ResizeKind::Terminal => {
                             this.show_terminal = !this.show_terminal;
                             if this.show_terminal {
-                                if this.terminal_maximized {
-                                    this.terminal_maximized = false;
-                                    this.terminal_height = 320.0;
-                                } else if this.terminal_height >= 500.0 {
+                                if this.terminal_maximized || this.terminal_height >= 500.0 {
                                     this.terminal_maximized = false;
                                     this.terminal_height = 320.0;
                                 } else {

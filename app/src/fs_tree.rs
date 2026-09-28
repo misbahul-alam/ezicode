@@ -263,7 +263,7 @@ mod tests {
             }],
         };
         let mut rows = Vec::new();
-        flatten_visible(&[root.clone()], 0, &mut rows);
+        flatten_visible(std::slice::from_ref(&root), 0, &mut rows);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].depth, 0);
 

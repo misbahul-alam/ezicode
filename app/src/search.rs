@@ -259,7 +259,7 @@ pub fn run_search(
             .git_exclude(true)
             .require_git(false)
             .filter_entry(move |e: &DirEntry| {
-                if e.file_type().map_or(false, |ft| ft.is_dir()) {
+                if e.file_type().is_some_and(|ft| ft.is_dir()) {
                     let name = e.file_name().to_string_lossy();
                     if is_skipped_dir(&name) {
                         return false;
@@ -276,7 +276,7 @@ pub fn run_search(
                 let Ok(entry) = entry else {
                     return WalkState::Continue;
                 };
-                if !entry.file_type().map_or(false, |ft| ft.is_file()) {
+                if !entry.file_type().is_some_and(|ft| ft.is_file()) {
                     return WalkState::Continue;
                 }
                 let path = entry.path().to_path_buf();

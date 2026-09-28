@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AutoSaveMode {
     #[serde(
@@ -11,6 +11,7 @@ pub enum AutoSaveMode {
         alias = "none",
         alias = "disabled"
     )]
+    #[default]
     Off,
     #[serde(
         alias = "afterDelay",
@@ -32,12 +33,6 @@ pub enum AutoSaveMode {
     OnFocusChange,
 }
 
-impl Default for AutoSaveMode {
-    fn default() -> Self {
-        AutoSaveMode::Off
-    }
-}
-
 impl AutoSaveMode {
     pub fn description(&self) -> &'static str {
         match self {
@@ -55,7 +50,7 @@ impl AutoSaveMode {
 /// Whether saving a file first asks its language server to format the buffer
 /// — Zed's `format_on_save` setting. The manual command is always available
 /// as Shift+Alt+F.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FormatOnSaveMode {
     #[serde(
@@ -65,15 +60,10 @@ pub enum FormatOnSaveMode {
         alias = "none",
         alias = "disabled"
     )]
+    #[default]
     Off,
     #[serde(alias = "on", alias = "ON", alias = "true", alias = "enabled")]
     On,
-}
-
-impl Default for FormatOnSaveMode {
-    fn default() -> Self {
-        FormatOnSaveMode::Off
-    }
 }
 
 impl FormatOnSaveMode {

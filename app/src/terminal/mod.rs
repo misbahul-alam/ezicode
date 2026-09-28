@@ -63,7 +63,7 @@ impl std::io::Write for SharedWriter {
         let mut guard = self
             .0
             .lock()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "lock poisoned"))?;
+            .map_err(|_| std::io::Error::other("lock poisoned"))?;
         guard.write(buf)
     }
 
@@ -71,7 +71,7 @@ impl std::io::Write for SharedWriter {
         let mut guard = self
             .0
             .lock()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "lock poisoned"))?;
+            .map_err(|_| std::io::Error::other("lock poisoned"))?;
         guard.flush()
     }
 }

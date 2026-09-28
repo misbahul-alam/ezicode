@@ -1055,8 +1055,8 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         let weak = term.downgrade();
-        let _ = term.update(cx, |term, cx| {
-            let _ = term.view.update(cx, |view, _cx| {
+        term.update(cx, |term, cx| {
+            term.view.update(cx, |view, _cx| {
                 view.set_title_callback(move |_window, cx, title| {
                     let _ = weak.update(cx, |term, cx| term.set_osc_title(title, cx));
                 });
@@ -1794,7 +1794,7 @@ impl Workspace {
                             .find(|t| t.path.as_ref() == Some(&path))
                         {
                             if let Some(editor) = &tab.editor {
-                                if editor.read(cx).value().to_string() == text {
+                                if editor.read(cx).value() == text {
                                     tab.dirty = false;
                                 }
                             }
@@ -2695,11 +2695,11 @@ impl Workspace {
                     let editor_path_is_alive = tab
                         .path
                         .as_ref()
-                        .map_or(true, |tab_path| !is_same_or_descendant(path, tab_path));
+                        .is_none_or(|tab_path| !is_same_or_descendant(path, tab_path));
                     let diff_path_is_alive = tab
                         .diff
                         .as_ref()
-                        .map_or(true, |diff| !is_same_or_descendant(path, &diff.path));
+                        .is_none_or(|diff| !is_same_or_descendant(path, &diff.path));
                     editor_path_is_alive && diff_path_is_alive
                 });
                 self.diagnostics_by_path
@@ -3147,7 +3147,7 @@ impl Workspace {
                 Err(e) => format!("Commit failed: {e}"),
             };
             let _ = this.update(cx, |workspace, cx| {
-                workspace.status = status.into();
+                workspace.status = status;
                 if is_ok {
                     workspace.git_poke();
                 }
@@ -3659,11 +3659,7 @@ impl Workspace {
             }
         }
 
-        let root_dir = self
-            .root
-            .as_ref()
-            .map(|r| r.as_path())
-            .unwrap_or(Path::new("."));
+        let root_dir = self.root.as_deref().unwrap_or(Path::new("."));
         let global_state = crate::storage::GlobalState::load();
         let mut recent_files: Vec<PathBuf> =
             self.tabs.iter().filter_map(|t| t.path.clone()).collect();
@@ -3794,12 +3790,11 @@ impl Workspace {
         let placeholder = format!("Go to line:column (1 - {})...", total_lines);
         let input = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
 
-        cx.subscribe(&input, |this, _state, event: &InputEvent, cx| match event {
-            InputEvent::PressEnter { .. } => {
+        cx.subscribe(&input, |this, _state, event: &InputEvent, cx| {
+            if let InputEvent::PressEnter { .. } = event {
                 this.picker_confirm_pending = true;
                 cx.notify();
             }
-            _ => {}
         })
         .detach();
 

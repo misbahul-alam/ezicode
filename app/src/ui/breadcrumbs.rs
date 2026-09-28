@@ -37,7 +37,7 @@ pub fn extract_markdown_headings(text: &str, cursor_line: usize) -> Vec<Breadcru
         let trimmed = line.trim();
         if trimmed.starts_with('#') {
             let hashes = trimmed.chars().take_while(|&c| c == '#').count();
-            if hashes >= 1 && hashes <= 6 {
+            if (1..=6).contains(&hashes) {
                 let rest = trimmed[hashes..].trim();
                 if !rest.is_empty() {
                     let heading_title = trimmed.to_string();
@@ -103,9 +103,9 @@ pub fn extract_code_symbols(text: &str, cursor_line: usize, ext: &str) -> Vec<Br
                     || trimmed.starts_with("enum ")
                     || trimmed.starts_with("pub trait ")
                     || trimmed.starts_with("trait ")
+                    || trimmed.starts_with("mod ")
+                    || trimmed.starts_with("pub mod ")
                 {
-                    Some(clean_declaration(trimmed))
-                } else if trimmed.starts_with("mod ") || trimmed.starts_with("pub mod ") {
                     Some(clean_declaration(trimmed))
                 } else {
                     None
@@ -181,10 +181,7 @@ pub fn extract_code_symbols(text: &str, cursor_line: usize, ext: &str) -> Vec<Br
 
 fn extract_name(line: &str, keyword: &str) -> Option<String> {
     let after = line.split(keyword).nth(1)?.trim();
-    let name = after
-        .split(|c: char| c == '(' || c == ':' || c == '{' || c == '<' || c == ' ')
-        .next()?
-        .trim();
+    let name = after.split(['(', ':', '{', '<', ' ']).next()?.trim();
     if name.is_empty() {
         None
     } else {

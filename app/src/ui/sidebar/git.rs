@@ -35,6 +35,7 @@ fn kind_color(kind: ChangeKind, t: &Colors) -> u32 {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_git_panel(
     commit_input: Option<&Entity<InputState>>,
     repo: Option<&RepoStatus>,

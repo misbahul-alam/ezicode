@@ -42,7 +42,6 @@ where
 /// hold it for as long as they hold the context. Bind it *before* the context:
 /// locals drop in reverse, so the device is then torn down before the lock is
 /// released.
-
 fn headless_context() -> ((), TestAppContext) {
     // A previous test may have panicked while holding the lock; that is not a
     // reason to refuse to run this one.

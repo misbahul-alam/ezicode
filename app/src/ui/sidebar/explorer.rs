@@ -23,6 +23,7 @@ const BASE_PAD: f32 = 12.0;
 const ROW_HEIGHT: f32 = 26.0;
 const ICON_SIZE: f32 = 18.0;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_tree(
     rows: Arc<[VisibleTreeRow]>,
     scroll_handle: UniformListScrollHandle,
