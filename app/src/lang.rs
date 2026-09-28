@@ -262,10 +262,7 @@ pub fn language_icon(id: &str) -> &'static str {
 }
 
 pub fn language_for(path: &Path) -> Option<&'static str> {
-    let ext_raw = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
+    let ext_raw = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     // Extensions are almost always lowercase; only allocate when an
     // uppercase letter actually needs folding (this runs on every render
     // for the status bar's language label).
@@ -462,7 +459,12 @@ pub fn init_languages() {
     let tsx_config = LanguageConfig::new(
         "tsx",
         tree_sitter_typescript::LANGUAGE_TSX.into(),
-        vec!["html".into(), "css".into(), "javascript".into(), "typescript".into()],
+        vec![
+            "html".into(),
+            "css".into(),
+            "javascript".into(),
+            "typescript".into(),
+        ],
         TSX_HIGHLIGHT_QUERY,
         "",
         tree_sitter_typescript::LOCALS_QUERY,
@@ -507,10 +509,7 @@ mod tests {
 
     #[test]
     fn web_languages_resolve_to_a_server() {
-        assert_eq!(
-            lsp_server_for("tsx"),
-            Some("typescript-language-server")
-        );
+        assert_eq!(lsp_server_for("tsx"), Some("typescript-language-server"));
         assert_eq!(lsp_server_for("css"), Some("vscode-css-language-server"));
         assert_eq!(lsp_server_for("html"), Some("vscode-html-language-server"));
         assert_eq!(lsp_server_for("json"), Some("json-language-server"));

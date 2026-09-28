@@ -28,8 +28,9 @@ pub fn container_dir(server_name: &str) -> PathBuf {
 }
 
 pub fn node_binary() -> Option<PathBuf> {
-
-    if let Some(explicit) = std::env::var_os("EZICODE_NODE").or_else(|| std::env::var_os("OLOVA_NODE")) {
+    if let Some(explicit) =
+        std::env::var_os("EZICODE_NODE").or_else(|| std::env::var_os("OLOVA_NODE"))
+    {
         let p = PathBuf::from(explicit);
         if p.is_file() {
             return Some(p);
@@ -103,7 +104,6 @@ fn in_flight() -> &'static Mutex<HashSet<String>> {
 /// Outcome of resolving a server's executable.
 #[derive(Debug)]
 pub enum Resolved {
-
     Ready { program: PathBuf, args: Vec<String> },
 
     NeedsInstall,
@@ -111,11 +111,7 @@ pub enum Resolved {
     Unavailable(String),
 }
 
-pub fn resolve_npm_server(
-    server_name: &str,
-    entry: &str,
-    args: &[&str],
-) -> Resolved {
+pub fn resolve_npm_server(server_name: &str, entry: &str, args: &[&str]) -> Resolved {
     let Some(node) = node_binary() else {
         return Resolved::Unavailable(
             "Node.js is not installed — required for TypeScript/JavaScript, CSS, HTML, JSON and YAML support".into(),

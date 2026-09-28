@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use gpui::{
-    div, img, px, rgba, Context, InteractiveElement, IntoElement,
-    ParentElement, SharedString, StatefulInteractiveElement, Styled,
+    div, img, px, rgba, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled,
 };
 
 use crate::theme::Colors;
@@ -79,15 +79,31 @@ pub fn extract_code_symbols(text: &str, cursor_line: usize, ext: &str) -> Vec<Br
         }
 
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with('*') {
+        if trimmed.is_empty()
+            || trimmed.starts_with("//")
+            || trimmed.starts_with("/*")
+            || trimmed.starts_with('*')
+        {
             continue;
         }
 
         let matched_symbol = match ext {
             "rs" => {
-                if trimmed.starts_with("pub fn ") || trimmed.starts_with("fn ") || trimmed.starts_with("pub(crate) fn ") || trimmed.starts_with("async fn ") || trimmed.starts_with("pub async fn ") {
+                if trimmed.starts_with("pub fn ")
+                    || trimmed.starts_with("fn ")
+                    || trimmed.starts_with("pub(crate) fn ")
+                    || trimmed.starts_with("async fn ")
+                    || trimmed.starts_with("pub async fn ")
+                {
                     extract_name(trimmed, "fn ")
-                } else if trimmed.starts_with("impl ") || trimmed.starts_with("pub struct ") || trimmed.starts_with("struct ") || trimmed.starts_with("pub enum ") || trimmed.starts_with("enum ") || trimmed.starts_with("pub trait ") || trimmed.starts_with("trait ") {
+                } else if trimmed.starts_with("impl ")
+                    || trimmed.starts_with("pub struct ")
+                    || trimmed.starts_with("struct ")
+                    || trimmed.starts_with("pub enum ")
+                    || trimmed.starts_with("enum ")
+                    || trimmed.starts_with("pub trait ")
+                    || trimmed.starts_with("trait ")
+                {
                     Some(clean_declaration(trimmed))
                 } else if trimmed.starts_with("mod ") || trimmed.starts_with("pub mod ") {
                     Some(clean_declaration(trimmed))
@@ -96,11 +112,24 @@ pub fn extract_code_symbols(text: &str, cursor_line: usize, ext: &str) -> Vec<Br
                 }
             }
             "ts" | "tsx" | "js" | "jsx" => {
-                if trimmed.starts_with("function ") || trimmed.starts_with("export function ") || trimmed.starts_with("async function ") || trimmed.starts_with("export async function ") {
+                if trimmed.starts_with("function ")
+                    || trimmed.starts_with("export function ")
+                    || trimmed.starts_with("async function ")
+                    || trimmed.starts_with("export async function ")
+                {
                     extract_name(trimmed, "function ")
-                } else if trimmed.starts_with("class ") || trimmed.starts_with("export class ") || trimmed.starts_with("interface ") || trimmed.starts_with("export interface ") || trimmed.starts_with("type ") || trimmed.starts_with("export type ") {
+                } else if trimmed.starts_with("class ")
+                    || trimmed.starts_with("export class ")
+                    || trimmed.starts_with("interface ")
+                    || trimmed.starts_with("export interface ")
+                    || trimmed.starts_with("type ")
+                    || trimmed.starts_with("export type ")
+                {
                     Some(clean_declaration(trimmed))
-                } else if trimmed.starts_with("const ") && trimmed.contains(" = ") && (trimmed.contains("=>") || trimmed.contains("function")) {
+                } else if trimmed.starts_with("const ")
+                    && trimmed.contains(" = ")
+                    && (trimmed.contains("=>") || trimmed.contains("function"))
+                {
                     extract_name(trimmed, "const ")
                 } else {
                     None
@@ -159,7 +188,13 @@ fn extract_name(line: &str, keyword: &str) -> Option<String> {
     if name.is_empty() {
         None
     } else {
-        Some(format!("{}{}", keyword.trim(), if keyword.ends_with(' ') { " " } else { "" }) + name)
+        Some(
+            format!(
+                "{}{}",
+                keyword.trim(),
+                if keyword.ends_with(' ') { " " } else { "" }
+            ) + name,
+        )
     }
 }
 
@@ -392,6 +427,8 @@ impl PickerState {
 "#;
         let syms = extract_code_symbols(rust_code, 8, "rs");
         assert!(!syms.is_empty());
-        assert!(syms.iter().any(|s| s.label.contains("impl PickerState") || s.label.contains("fn new")));
+        assert!(syms
+            .iter()
+            .any(|s| s.label.contains("impl PickerState") || s.label.contains("fn new")));
     }
 }

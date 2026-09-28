@@ -207,7 +207,10 @@ pub(crate) fn render_no_folder_panel(t: &Colors, cx: &mut Context<Workspace>) ->
                         let display_path = path.to_string_lossy().to_string();
 
                         div()
-                            .id(SharedString::from(format!("sidebar-recent-{}", display_path)))
+                            .id(SharedString::from(format!(
+                                "sidebar-recent-{}",
+                                display_path
+                            )))
                             .w_full()
                             .flex()
                             .flex_col()

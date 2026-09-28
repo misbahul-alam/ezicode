@@ -62,7 +62,6 @@ pub enum LspEvent {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ServerStatus {
-
     Installing,
 
     Starting,
@@ -73,7 +72,6 @@ pub enum ServerStatus {
 }
 
 pub struct LspManager {
-
     clients: HashMap<String, Arc<LspClient>>,
 
     statuses: HashMap<String, ServerStatus>,
@@ -120,11 +118,7 @@ impl LspManager {
         self.root.as_deref()
     }
 
-    pub fn ensure_server(
-        &mut self,
-        lang: &str,
-        root_dir: Option<&Path>,
-    ) -> Option<Arc<LspClient>> {
+    pub fn ensure_server(&mut self, lang: &str, root_dir: Option<&Path>) -> Option<Arc<LspClient>> {
         let adapter = super::adapter::adapter_for_language(lang)?;
         let name = adapter.name;
 
@@ -146,12 +140,16 @@ impl LspManager {
             }
         }
 
-        let root = root_dir.map(Path::to_path_buf).or_else(|| self.root.clone());
+        let root = root_dir
+            .map(Path::to_path_buf)
+            .or_else(|| self.root.clone());
 
         match adapter.source {
             super::adapter::Source::Native { binary } => {
                 let fallbacks: &[&str] = match binary {
-                    "basedpyright-langserver" => &["pyright-langserver", "pyright", "pylsp", "ruff"],
+                    "basedpyright-langserver" => {
+                        &["pyright-langserver", "pyright", "pylsp", "ruff"]
+                    }
                     "csharp-ls" => &["OmniSharp", "omnisharp"],
                     "language_server.sh" => &["elixir-ls"],
                     _ => &[],
@@ -163,7 +161,12 @@ impl LspManager {
                     );
                     return None;
                 };
-                self.spawn_client(adapter, program, adapter.args.iter().map(|s| s.to_string()).collect(), root)
+                self.spawn_client(
+                    adapter,
+                    program,
+                    adapter.args.iter().map(|s| s.to_string()).collect(),
+                    root,
+                )
             }
             super::adapter::Source::Npm { package, entry } => {
                 match super::node::resolve_npm_server(name, entry, adapter.args) {
@@ -192,7 +195,13 @@ impl LspManager {
         root: Option<PathBuf>,
     ) -> Option<Arc<LspClient>> {
         let name = adapter.name;
-        match LspClient::spawn(adapter, program, args, root.as_deref(), self.event_tx.clone()) {
+        match LspClient::spawn(
+            adapter,
+            program,
+            args,
+            root.as_deref(),
+            self.event_tx.clone(),
+        ) {
             Some(client) => {
                 let client = Arc::new(client);
                 self.clients.insert(name.to_string(), client.clone());
@@ -298,7 +307,9 @@ impl LspManager {
         if *count >= 3 {
             self.statuses.insert(
                 server.to_string(),
-                ServerStatus::Failed(format!("{server} exited repeatedly — stopped auto-restarting")),
+                ServerStatus::Failed(format!(
+                    "{server} exited repeatedly — stopped auto-restarting"
+                )),
             );
             eprintln!("[LSP] {server} exited repeatedly — stopping auto-restart.");
             false
@@ -370,7 +381,6 @@ impl LspManager {
 }
 
 pub struct LspClient {
-
     pub adapter: &'static super::adapter::ServerAdapter,
     /// Workspace root this server was started in.
     #[allow(dead_code)]
@@ -384,7 +394,6 @@ pub struct LspClient {
     is_initialized: Arc<Mutex<bool>>,
     pending_opens: Arc<Mutex<Vec<(PathBuf, String, String)>>>,
     /// Documents whose text changed but haven't been synced yet: latest text
-
     pending_changes: Arc<Mutex<HashMap<PathBuf, String>>>,
 
     synced_texts: Arc<Mutex<HashMap<PathBuf, String>>>,
@@ -400,7 +409,6 @@ pub struct LspClient {
 }
 
 impl LspClient {
-
     pub fn spawn(
         adapter: &'static super::adapter::ServerAdapter,
         program: PathBuf,
@@ -496,22 +504,10 @@ impl LspClient {
             let versions_w = versions.clone();
             let synced_w = synced_texts.clone();
             let caps_w = server_capabilities.clone();
-            thread::spawn(move || {
-                loop {
-                    match out_rx.recv_timeout(Duration::from_millis(120)) {
-                        Ok(bytes) => write_to_stdin(&stdin_for_write, &bytes),
-                        Err(RecvTimeoutError::Timeout) => {
-                            flush_pending_changes(
-                                &stdin_for_write,
-                                &pending_w,
-                                &versions_w,
-                                &synced_w,
-                                &caps_w,
-                            );
-                        }
-                        Err(RecvTimeoutError::Disconnected) => break,
-                    }
-                    if !*is_alive_w.lock().unwrap() {
+            thread::spawn(move || loop {
+                match out_rx.recv_timeout(Duration::from_millis(120)) {
+                    Ok(bytes) => write_to_stdin(&stdin_for_write, &bytes),
+                    Err(RecvTimeoutError::Timeout) => {
                         flush_pending_changes(
                             &stdin_for_write,
                             &pending_w,
@@ -519,8 +515,18 @@ impl LspClient {
                             &synced_w,
                             &caps_w,
                         );
-                        break;
                     }
+                    Err(RecvTimeoutError::Disconnected) => break,
+                }
+                if !*is_alive_w.lock().unwrap() {
+                    flush_pending_changes(
+                        &stdin_for_write,
+                        &pending_w,
+                        &versions_w,
+                        &synced_w,
+                        &caps_w,
+                    );
+                    break;
                 }
             });
         }
@@ -542,7 +548,6 @@ impl LspClient {
             while *is_alive_clone.lock().unwrap() {
                 match read_message(&mut reader) {
                     Ok(Some(mut msg)) => {
-
                         let raw_id = msg.get("id").cloned().filter(|v| !v.is_null());
                         let id = raw_id.as_ref().and_then(Value::as_i64);
                         let method = msg
@@ -563,16 +568,14 @@ impl LspClient {
                         }
 
                         match (id, method.as_deref()) {
-
                             (Some(1), None) => {
-
                                 *caps_r.lock().unwrap() = msg
                                     .get("result")
                                     .and_then(|r| r.get("capabilities"))
                                     .and_then(|c| {
-                                        serde_json::from_value::<
-                                            lsp_types::ServerCapabilities,
-                                        >(c.clone())
+                                        serde_json::from_value::<lsp_types::ServerCapabilities>(
+                                            c.clone(),
+                                        )
                                         .ok()
                                     });
 
@@ -724,11 +727,19 @@ impl LspClient {
                             value_set: vec![
                                 lsp_types::CodeActionKind::QUICKFIX.as_str().to_string(),
                                 lsp_types::CodeActionKind::REFACTOR.as_str().to_string(),
-                                lsp_types::CodeActionKind::REFACTOR_EXTRACT.as_str().to_string(),
-                                lsp_types::CodeActionKind::REFACTOR_INLINE.as_str().to_string(),
-                                lsp_types::CodeActionKind::REFACTOR_REWRITE.as_str().to_string(),
+                                lsp_types::CodeActionKind::REFACTOR_EXTRACT
+                                    .as_str()
+                                    .to_string(),
+                                lsp_types::CodeActionKind::REFACTOR_INLINE
+                                    .as_str()
+                                    .to_string(),
+                                lsp_types::CodeActionKind::REFACTOR_REWRITE
+                                    .as_str()
+                                    .to_string(),
                                 lsp_types::CodeActionKind::SOURCE.as_str().to_string(),
-                                lsp_types::CodeActionKind::SOURCE_ORGANIZE_IMPORTS.as_str().to_string(),
+                                lsp_types::CodeActionKind::SOURCE_ORGANIZE_IMPORTS
+                                    .as_str()
+                                    .to_string(),
                             ],
                         },
                     }),
@@ -801,7 +812,6 @@ impl LspClient {
     }
 
     pub fn did_open(&self, path: &Path, lang: &str, text: &str) {
-
         let language_id = self.adapter.language_id(lang).to_string();
 
         self.synced_texts
@@ -810,11 +820,11 @@ impl LspClient {
             .insert(path.to_path_buf(), text.to_string());
 
         if !*self.is_initialized.lock().unwrap() {
-
-            self.pending_opens
-                .lock()
-                .unwrap()
-                .push((path.to_path_buf(), language_id, text.to_string()));
+            self.pending_opens.lock().unwrap().push((
+                path.to_path_buf(),
+                language_id,
+                text.to_string(),
+            ));
             return;
         }
 
@@ -917,7 +927,6 @@ impl LspClient {
             server_wants_incremental(&self.server_capabilities.lock().unwrap()),
         );
         let Some(change) = change else {
-
             return;
         };
 
@@ -1015,9 +1024,9 @@ impl LspClient {
 
 impl Drop for LspClient {
     fn drop(&mut self) {
-
         *self.is_alive.lock().unwrap() = false;
-        let shutdown = json!({"jsonrpc": "2.0", "id": 999_999, "method": "shutdown", "params": null});
+        let shutdown =
+            json!({"jsonrpc": "2.0", "id": 999_999, "method": "shutdown", "params": null});
         if let Some(bytes) = frame_payload(&shutdown) {
             let _ = self.out.send(bytes);
         }
@@ -1117,7 +1126,11 @@ impl CompletionProvider for LspCompletionProvider {
         new_text: &str,
         _cx: &mut Context<InputState>,
     ) -> bool {
-        new_text.chars().next().map(is_completion_trigger_char).unwrap_or(false)
+        new_text
+            .chars()
+            .next()
+            .map(is_completion_trigger_char)
+            .unwrap_or(false)
     }
 }
 
@@ -1146,7 +1159,8 @@ impl HoverProvider for LspHoverProvider {
             let Some(uri) = path_to_uri(&path) else {
                 return Ok(None);
             };
-            let params = TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri), position);
+            let params =
+                TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri), position);
             let Ok(params) = serde_json::to_value(params) else {
                 return Ok(None);
             };
@@ -1183,11 +1197,13 @@ impl DefinitionProvider for LspDefinitionProvider {
             let Some(uri) = path_to_uri(&path) else {
                 return Ok(vec![]);
             };
-            let params = TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri), position);
+            let params =
+                TextDocumentPositionParams::new(TextDocumentIdentifier::new(uri), position);
             let Ok(params) = serde_json::to_value(params) else {
                 return Ok(vec![]);
             };
-            let response = client.request_with_text(&path, &text_str, "textDocument/definition", params);
+            let response =
+                client.request_with_text(&path, &text_str, "textDocument/definition", params);
             let locations = response
                 .and_then(|v| serde_json::from_value::<GotoDefinitionResponse>(v).ok())
                 .map(|r| match r {
@@ -1227,7 +1243,6 @@ impl CodeActionProvider for LspCodeActionProvider {
         let path = self.path.clone();
 
         cx.background_spawn(async move {
-
             let Some(text) = client.last_text(&path) else {
                 return Ok(vec![]);
             };
@@ -1250,10 +1265,7 @@ impl CodeActionProvider for LspCodeActionProvider {
                         .cloned()
                         .unwrap_or_default()
                         .into_iter()
-                        .filter(|d| {
-
-                            !(d.range.end <= start || d.range.start >= end)
-                        })
+                        .filter(|d| !(d.range.end <= start || d.range.start >= end))
                         .collect(),
                     only: None,
                     trigger_kind: Some(CodeActionTriggerKind::INVOKED),
@@ -1261,8 +1273,7 @@ impl CodeActionProvider for LspCodeActionProvider {
                 work_done_progress_params: Default::default(),
                 partial_result_params: Default::default(),
             })
-            .ok()
-            else {
+            .ok() else {
                 return Ok(vec![]);
             };
 
@@ -1382,7 +1393,6 @@ fn flush_pending_changes(
     }
     let incremental = server_wants_incremental(&server_capabilities.lock().unwrap());
     for (path, text) in items {
-
         let doc_open = versions.lock().unwrap().contains_key(&path);
         if !doc_open {
             continue;
@@ -1437,7 +1447,6 @@ fn content_change_for(
         (true, Some(prev)) => {
             let (start, end, inserted) = diff_edit(prev, text);
             if start == end && inserted.is_empty() {
-
                 return TextDocumentContentChangeEvent {
                     range: None,
                     range_length: None,
@@ -1489,15 +1498,10 @@ fn diff_edit<'a>(old: &'a str, new: &'a str) -> (usize, usize, &'a str) {
     }
 
     let mut s = 0;
-    while s < ob.len() - p
-        && s < nb.len() - p
-        && ob[ob.len() - 1 - s] == nb[nb.len() - 1 - s]
-    {
+    while s < ob.len() - p && s < nb.len() - p && ob[ob.len() - 1 - s] == nb[nb.len() - 1 - s] {
         s += 1;
     }
-    while s > 0
-        && (!old.is_char_boundary(ob.len() - s) || !new.is_char_boundary(nb.len() - s))
-    {
+    while s > 0 && (!old.is_char_boundary(ob.len() - s) || !new.is_char_boundary(nb.len() - s)) {
         s -= 1;
     }
 
@@ -1533,7 +1537,8 @@ pub fn uri_to_path(uri: &Uri) -> Option<PathBuf> {
 
 pub fn paths_match(a: &Path, b: &Path) -> bool {
     if cfg!(windows) {
-        a.to_string_lossy().eq_ignore_ascii_case(&b.to_string_lossy())
+        a.to_string_lossy()
+            .eq_ignore_ascii_case(&b.to_string_lossy())
     } else {
         a == b
     }
@@ -1541,11 +1546,15 @@ pub fn paths_match(a: &Path, b: &Path) -> bool {
 
 pub fn find_binary_on_path(binary: &str) -> Option<PathBuf> {
     const WINDOWS_EXTS: [&str; 3] = [".cmd", ".exe", ".bat"];
-    let candidates: Vec<String> = if cfg!(windows) && !WINDOWS_EXTS.iter().any(|e| binary.ends_with(e)) {
-        WINDOWS_EXTS.iter().map(|e| format!("{binary}{e}")).collect()
-    } else {
-        vec![binary.to_string()]
-    };
+    let candidates: Vec<String> =
+        if cfg!(windows) && !WINDOWS_EXTS.iter().any(|e| binary.ends_with(e)) {
+            WINDOWS_EXTS
+                .iter()
+                .map(|e| format!("{binary}{e}"))
+                .collect()
+        } else {
+            vec![binary.to_string()]
+        };
     std::env::var_os("PATH").and_then(|paths| {
         std::env::split_paths(&paths).find_map(|dir| {
             candidates.iter().find_map(|name| {
@@ -1721,7 +1730,9 @@ mod tests {
         let payload = r#"{"jsonrpc":"2.0","method":"test","params":{}}"#;
         let framed = format!("Content-Length: {}\r\n\r\n{}", payload.len(), payload);
         let mut cursor = std::io::Cursor::new(framed.into_bytes());
-        let msg = read_message(&mut cursor).expect("read ok").expect("some msg");
+        let msg = read_message(&mut cursor)
+            .expect("read ok")
+            .expect("some msg");
         assert_eq!(msg["method"], "test");
     }
 
@@ -1803,7 +1814,6 @@ mod tests {
     /// apply cleanly on the server's copy.
     #[test]
     fn diff_edit_produces_minimal_ranged_edits() {
-
         let (s, e, ins) = diff_edit("hello world", "hello big world");
         assert_eq!((s, e, ins), (6, 6, "big "));
 
@@ -1824,7 +1834,6 @@ mod tests {
 
     #[test]
     fn diff_edit_stays_on_char_boundaries() {
-
         let (s, e, ins) = diff_edit("café", "café!");
         let mut applied = "café".to_string();
         applied.replace_range(s..e, ins);
@@ -1880,11 +1889,7 @@ mod tests {
         let mut line = 0u32;
         for (i, ch) in text.char_indices() {
             if line == pos.line {
-                let col = text[..i]
-                    .chars()
-                    .rev()
-                    .take_while(|c| *c != '\n')
-                    .count() as u32;
+                let col = text[..i].chars().rev().take_while(|c| *c != '\n').count() as u32;
                 return i + ((pos.character - col) as usize);
             }
             if ch == '\n' {
@@ -1898,7 +1903,9 @@ mod tests {
     fn incremental_sync_kind_is_detected() {
         use lsp_types::{ServerCapabilities, TextDocumentSyncCapability};
         assert!(!server_wants_incremental(&None));
-        assert!(!server_wants_incremental(&Some(ServerCapabilities::default())));
+        assert!(!server_wants_incremental(&Some(
+            ServerCapabilities::default()
+        )));
         assert!(server_wants_incremental(&Some(ServerCapabilities {
             text_document_sync: Some(TextDocumentSyncCapability::Kind(
                 lsp_types::TextDocumentSyncKind::INCREMENTAL
@@ -1966,8 +1973,7 @@ mod tests {
 
     #[test]
     fn live_typescript_diagnostics() {
-        let adapter =
-            super::super::adapter::adapter_by_name("typescript-language-server").unwrap();
+        let adapter = super::super::adapter::adapter_by_name("typescript-language-server").unwrap();
         let super::super::adapter::Source::Npm { entry, .. } = adapter.source else {
             panic!("typescript-language-server should be an npm server");
         };

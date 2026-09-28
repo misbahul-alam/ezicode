@@ -1,12 +1,12 @@
-use std::path::{Path, PathBuf};
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    div, img, px, rgba, svg, Context, Entity, InteractiveElement, IntoElement,
-    MouseButton, ParentElement, SharedString, StatefulInteractiveElement, Styled,
+    div, img, px, rgba, svg, Context, Entity, InteractiveElement, IntoElement, MouseButton,
+    ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
 use gpui_component::input::{Input, InputState};
+use std::path::{Path, PathBuf};
 
 use crate::theme::Colors;
 use crate::workspace::Workspace;
@@ -39,11 +39,7 @@ pub struct PickerState {
 }
 
 impl PickerState {
-    pub fn new(
-        kind: PickerKind,
-        input: Entity<InputState>,
-        raw_items: Vec<PickerItem>,
-    ) -> Self {
+    pub fn new(kind: PickerKind, input: Entity<InputState>, raw_items: Vec<PickerItem>) -> Self {
         let filtered_items = if kind == PickerKind::GoToLine {
             Vec::new()
         } else {
@@ -173,9 +169,13 @@ pub fn scan_workspace_files(root: &Path, recent_files: &[PathBuf]) -> Vec<Picker
                 .map(|p| {
                     let s = p.to_string_lossy();
                     #[cfg(windows)]
-                    { s.replace('/', "\\") }
+                    {
+                        s.replace('/', "\\")
+                    }
                     #[cfg(not(windows))]
-                    { s.to_string() }
+                    {
+                        s.to_string()
+                    }
                 })
                 .filter(|s| !s.is_empty());
             let icon = crate::file_icons::icon_for(path).to_string();
@@ -225,9 +225,13 @@ pub fn scan_workspace_files(root: &Path, recent_files: &[PathBuf]) -> Vec<Picker
                     .map(|p| {
                         let s = p.to_string_lossy();
                         #[cfg(windows)]
-                        { s.replace('/', "\\") }
+                        {
+                            s.replace('/', "\\")
+                        }
                         #[cfg(not(windows))]
-                        { s.to_string() }
+                        {
+                            s.to_string()
+                        }
                     })
                     .filter(|s| !s.is_empty());
                 let icon = crate::file_icons::icon_for(path).to_string();
@@ -885,16 +889,12 @@ pub fn render_picker(
                         .border_1()
                         .border_color(rgba(0x388bfdff))
                         .child(
-                            div()
-                                .flex_1()
-                                .min_w(px(0.0))
-                                .text_size(px(13.5))
-                                .child(
-                                    Input::new(&picker.input)
-                                        .text_size(px(13.5))
-                                        .appearance(false)
-                                        .cleanable(false),
-                                ),
+                            div().flex_1().min_w(px(0.0)).text_size(px(13.5)).child(
+                                Input::new(&picker.input)
+                                    .text_size(px(13.5))
+                                    .appearance(false)
+                                    .cleanable(false),
+                            ),
                         ),
                 )
                 // Results list
@@ -970,8 +970,16 @@ mod tests {
         let root = Path::new(".");
         let files = scan_workspace_files(root, &[]);
         for f in &files {
-            assert!(!f.id.contains(".git"), "Should not contain .git files: {}", f.id);
-            assert!(!f.id.contains("target"), "Should not contain target files: {}", f.id);
+            assert!(
+                !f.id.contains(".git"),
+                "Should not contain .git files: {}",
+                f.id
+            );
+            assert!(
+                !f.id.contains("target"),
+                "Should not contain target files: {}",
+                f.id
+            );
         }
     }
 
@@ -984,7 +992,10 @@ mod tests {
         assert!(rust.is_recent);
         assert_eq!(rust.shortcut, Some("Current"));
 
-        let py = items.iter().find(|i| i.id == "python").expect("python item");
+        let py = items
+            .iter()
+            .find(|i| i.id == "python")
+            .expect("python item");
         assert_eq!(py.title, "Python");
         assert!(!py.is_recent);
     }

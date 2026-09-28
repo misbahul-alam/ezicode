@@ -75,8 +75,12 @@ pub(crate) fn render_git_panel(
                 .flex_col()
                 .overflow_y_scrollbar();
 
-            let staged: Vec<GitChange> =
-                repo.changes.iter().filter(|c| c.is_staged()).cloned().collect();
+            let staged: Vec<GitChange> = repo
+                .changes
+                .iter()
+                .filter(|c| c.is_staged())
+                .cloned()
+                .collect();
             let unstaged: Vec<GitChange> = repo
                 .changes
                 .iter()
@@ -207,12 +211,11 @@ pub(crate) fn render_git_panel(
 
                 if staged_expanded {
                     body = body.child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .children(staged.iter().map(|c| {
-                                change_row(c, true, "git-staged-row", t, cx)
-                            })),
+                        div().flex().flex_col().children(
+                            staged
+                                .iter()
+                                .map(|c| change_row(c, true, "git-staged-row", t, cx)),
+                        ),
                     );
                 }
             }
@@ -304,12 +307,11 @@ pub(crate) fn render_git_panel(
 
             if changes_expanded {
                 body = body.child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .children(unstaged.iter().map(|c| {
-                            change_row(c, false, "git-change-row", t, cx)
-                        })),
+                    div().flex().flex_col().children(
+                        unstaged
+                            .iter()
+                            .map(|c| change_row(c, false, "git-change-row", t, cx)),
+                    ),
                 );
             }
 
@@ -320,11 +322,7 @@ pub(crate) fn render_git_panel(
     col.into_any_element()
 }
 
-fn header(
-    t: &Colors,
-    _window: &mut Window,
-    _cx: &mut Context<Workspace>,
-) -> impl IntoElement {
+fn header(t: &Colors, _window: &mut Window, _cx: &mut Context<Workspace>) -> impl IntoElement {
     div()
         .h(px(36.0))
         .px(px(12.0))
@@ -497,12 +495,7 @@ fn commit_box(
                     this.git_commit(window, cx);
                 })),
         )
-        .child(
-            div()
-                .w(px(1.0))
-                .h(px(20.0))
-                .bg(rgba(0xffffff33)),
-        )
+        .child(div().w(px(1.0)).h(px(20.0)).bg(rgba(0xffffff33)))
         .child(
             div()
                 .id("git-commit-dropdown-btn")
@@ -753,24 +746,56 @@ fn change_row(
     let is_untracked = change.is_untracked();
 
     row.context_menu(move |menu, _window, _cx| {
-        menu.menu("Open File", Box::new(GitOpenFile { path: path_c1.clone() }))
-            .menu("Open Diff", Box::new(GitOpenDiff { path: path_c2.clone() }))
-            .separator()
-            .when(!is_staged && !is_untracked, |m| {
-                m.menu("Stage Changes", Box::new(GitStageFile { path: path_c3.clone() }))
-            })
-            .when(is_staged, |m| {
-                m.menu("Unstage Changes", Box::new(GitUnstageFile { path: path_c4.clone() }))
-            })
-            .when(!is_untracked, |m| {
-                m.menu("Discard Changes", Box::new(GitDiscardFile { path: path_c5.clone() }))
-            })
-            .separator()
-            .menu(
-                "Reveal in File Explorer",
-                Box::new(ExplorerRevealInFinder { path: path_c1.clone() }),
+        menu.menu(
+            "Open File",
+            Box::new(GitOpenFile {
+                path: path_c1.clone(),
+            }),
+        )
+        .menu(
+            "Open Diff",
+            Box::new(GitOpenDiff {
+                path: path_c2.clone(),
+            }),
+        )
+        .separator()
+        .when(!is_staged && !is_untracked, |m| {
+            m.menu(
+                "Stage Changes",
+                Box::new(GitStageFile {
+                    path: path_c3.clone(),
+                }),
             )
-            .menu("Copy Path", Box::new(ExplorerCopyPath { path: path_c2.clone() }))
+        })
+        .when(is_staged, |m| {
+            m.menu(
+                "Unstage Changes",
+                Box::new(GitUnstageFile {
+                    path: path_c4.clone(),
+                }),
+            )
+        })
+        .when(!is_untracked, |m| {
+            m.menu(
+                "Discard Changes",
+                Box::new(GitDiscardFile {
+                    path: path_c5.clone(),
+                }),
+            )
+        })
+        .separator()
+        .menu(
+            "Reveal in File Explorer",
+            Box::new(ExplorerRevealInFinder {
+                path: path_c1.clone(),
+            }),
+        )
+        .menu(
+            "Copy Path",
+            Box::new(ExplorerCopyPath {
+                path: path_c2.clone(),
+            }),
+        )
     })
 }
 

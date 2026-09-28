@@ -10,12 +10,11 @@ pub(crate) fn render_extensions_panel(t: &Colors) -> AnyElement {
         .flex_col()
         .bg(rgba(t.panel))
         .child(panel_header("EXTENSIONS", t))
-        .child(
-            div()
-                .px(px(12.0))
-                .py(px(8.0))
-                .child(mock_input("Search Extensions in Marketplace", 30.0, t)),
-        )
+        .child(div().px(px(12.0)).py(px(8.0)).child(mock_input(
+            "Search Extensions in Marketplace",
+            30.0,
+            t,
+        )))
         .child(section_strip("INSTALLED", t))
         .child(
             div()
@@ -84,10 +83,22 @@ fn title_row(name: &'static str, installed: bool, t: &Colors) -> Div {
                 .px(px(8.0))
                 .py(px(2.0))
                 .rounded(px(3.0))
-                .bg(rgba(if installed { t.element_active } else { t.border_focused }))
+                .bg(rgba(if installed {
+                    t.element_active
+                } else {
+                    t.border_focused
+                }))
                 .text_size(px(11.0))
-                .text_color(rgba(if installed { t.text_muted } else { t.background }))
-                .child(SharedString::from(if installed { "Installed" } else { "Install" })),
+                .text_color(rgba(if installed {
+                    t.text_muted
+                } else {
+                    t.background
+                }))
+                .child(SharedString::from(if installed {
+                    "Installed"
+                } else {
+                    "Install"
+                })),
         )
 }
 

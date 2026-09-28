@@ -239,7 +239,10 @@ mod tests {
             path_after_move(Path::new("/project/src/main.rs"), source, destination),
             Some(PathBuf::from("/project/lib/main.rs"))
         );
-        assert_eq!(path_after_move(Path::new("/project/src2/main.rs"), source, destination), None);
+        assert_eq!(
+            path_after_move(Path::new("/project/src2/main.rs"), source, destination),
+            None
+        );
     }
 
     #[test]

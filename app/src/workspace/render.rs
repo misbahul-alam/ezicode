@@ -56,7 +56,9 @@ impl Render for Workspace {
 
         // Lazily create the search inputs on first visit so Ctrl+Shift+F can
         // focus the query box immediately (idempotent, runs once).
-        if self.show_sidebar && self.activity == Activity::Search && self.search_query_input.is_none()
+        if self.show_sidebar
+            && self.activity == Activity::Search
+            && self.search_query_input.is_none()
         {
             self.ensure_search_inputs(window, cx);
         }
@@ -79,8 +81,7 @@ impl Render for Workspace {
         // The search view owns real text inputs: while it is the visible panel,
         // focus is left alone, otherwise every render would yank focus out of
         // the query/replace boxes and make them untypeable.
-        let search_panel_visible =
-            self.show_sidebar && self.activity == Activity::Search;
+        let search_panel_visible = self.show_sidebar && self.activity == Activity::Search;
         if self.picker.is_none()
             && self.active_editor().is_none()
             && !self.show_terminal
@@ -99,12 +100,20 @@ impl Render for Workspace {
         let title = self.title();
 
         let max_sidebar = f32::from(window.viewport_size().width - px(320.0)).max(220.0);
-        let min_sidebar = if self.panel_resize.is_some() { 60.0 } else { 170.0 };
+        let min_sidebar = if self.panel_resize.is_some() {
+            60.0
+        } else {
+            170.0
+        };
         self.sidebar_width = self.sidebar_width.clamp(min_sidebar, max_sidebar);
         let sidebar_w = self.sidebar_width;
-        let max_terminal = f32::from(window.viewport_size().height - px(TERMINAL_MAX_RESERVE))
-            .max(120.0);
-        let min_terminal = if self.panel_resize.is_some() { 45.0 } else { 80.0 };
+        let max_terminal =
+            f32::from(window.viewport_size().height - px(TERMINAL_MAX_RESERVE)).max(120.0);
+        let min_terminal = if self.panel_resize.is_some() {
+            45.0
+        } else {
+            80.0
+        };
         self.terminal_height = self.terminal_height.clamp(min_terminal, max_terminal);
         let terminal_h = self.terminal_height;
         // The right dock is clamped like the sidebar (never wider than
@@ -137,7 +146,8 @@ impl Render for Workspace {
         let terminal_tabs = &self.terminal_tabs;
         let active_terminal = self.active_terminal;
         let terminal_tab_scroll = self.terminal_tab_scroll.clone();
-        let terminal_maximized = self.terminal_maximized && self.show_terminal && !self.terminal_tabs.is_empty();
+        let terminal_maximized =
+            self.terminal_maximized && self.show_terminal && !self.terminal_tabs.is_empty();
         let terminal_right_tabs = &self.terminal_right_tabs;
         let active_terminal_right = self.active_terminal_right;
         let terminal_right_tab_scroll = self.terminal_right_tab_scroll.clone();
@@ -145,11 +155,17 @@ impl Render for Workspace {
 
         let tabs = &self.tabs;
         let active_tab = self.active_tab;
-        let is_settings = self.tabs.get(active_tab).map(|t| t.is_settings).unwrap_or(false);
+        let is_settings = self
+            .tabs
+            .get(active_tab)
+            .map(|t| t.is_settings)
+            .unwrap_or(false);
 
         let active_diff = self.tabs.get(active_tab).and_then(|t| t.diff.as_ref());
 
-        let breadcrumb_items = if let (Some(p), Some(editor)) = (open.as_ref(), self.active_editor()) {
+        let breadcrumb_items = if let (Some(p), Some(editor)) =
+            (open.as_ref(), self.active_editor())
+        {
             let cursor_line = {
                 let ed = editor.read(cx);
                 let offset = ed.cursor();
@@ -157,11 +173,12 @@ impl Render for Workspace {
                 (text.offset_to_position(offset).line + 1) as usize
             };
             let text_len = editor.read(cx).text().len();
-            let cache_hit = if let Some((cached_p, cached_line, cached_len, _)) = &self.cached_breadcrumbs {
-                cached_p == p && *cached_line == cursor_line && *cached_len == text_len
-            } else {
-                false
-            };
+            let cache_hit =
+                if let Some((cached_p, cached_line, cached_len, _)) = &self.cached_breadcrumbs {
+                    cached_p == p && *cached_line == cursor_line && *cached_len == text_len
+                } else {
+                    false
+                };
 
             if !cache_hit {
                 let text = editor.read(cx).value().to_string();
@@ -174,7 +191,10 @@ impl Render for Workspace {
                 self.cached_breadcrumbs = Some((p.clone(), cursor_line, text_len, items));
             }
 
-            self.cached_breadcrumbs.as_ref().map(|(_, _, _, items)| items.clone()).unwrap_or_default()
+            self.cached_breadcrumbs
+                .as_ref()
+                .map(|(_, _, _, items)| items.clone())
+                .unwrap_or_default()
         } else {
             self.cached_breadcrumbs = None;
             Vec::new()
@@ -229,7 +249,6 @@ impl Render for Workspace {
             .text_color(rgba(t.text))
             .font_family(crate::assets::SANS_FONT)
             .cursor_default()
-
             .on_action(cx.listener(|this, _: &Save, window, cx| this.save(window, cx)))
             .on_action(cx.listener(|this, _: &Quit, _, cx| this.quit(cx)))
             .on_action(cx.listener(|this, _: &ShowExplorer, window, cx| {
@@ -244,13 +263,11 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &ShowExtensions, window, cx| {
                 this.set_activity_explicit(Activity::Extensions, window, cx);
             }))
-            .on_action(
-                cx.listener(|this, _: &ToggleSidebar, _, cx| {
-                    this.show_sidebar = !this.show_sidebar;
-                    this.persist_workspace_state(cx);
-                    cx.notify();
-                }),
-            )
+            .on_action(cx.listener(|this, _: &ToggleSidebar, _, cx| {
+                this.show_sidebar = !this.show_sidebar;
+                this.persist_workspace_state(cx);
+                cx.notify();
+            }))
             .on_action(cx.listener(|this, _: &ToggleTerminal, window, cx| {
                 this.toggle_terminal(window, cx);
             }))
@@ -260,7 +277,6 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &ToggleTerminalRight, window, cx| {
                 this.toggle_terminal_right(window, cx);
             }))
-
             .on_action(cx.listener(|this, _: &NextTerminal, window, cx| {
                 this.next_terminal_tab(window, cx);
             }))
@@ -320,9 +336,11 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, action: &ExplorerCopyPath, _, cx| {
                 this.copy_path(&action.path, cx);
             }))
-            .on_action(cx.listener(|this, action: &ExplorerCopyRelativePath, _, cx| {
-                this.copy_relative_path(&action.path, cx);
-            }))
+            .on_action(
+                cx.listener(|this, action: &ExplorerCopyRelativePath, _, cx| {
+                    this.copy_relative_path(&action.path, cx);
+                }),
+            )
             .on_action(cx.listener(|this, action: &ExplorerRename, window, cx| {
                 this.start_inline_rename(action.path.clone(), window, cx);
             }))
@@ -338,7 +356,6 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &ExplorerPaste, _, cx| {
                 this.explorer_paste(cx);
             }))
-
             .on_action(cx.listener(|this, _: &CloseTab, window, cx| {
                 this.handle_close_tab(&CloseTab, window, cx);
             }))
@@ -354,7 +371,6 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, action: &CloseTabAt, window, cx| {
                 this.handle_close_tab_at(action, window, cx);
             }))
-
             .on_action(cx.listener(|this, _: &IncreaseFontSize, _, cx| {
                 this.increase_font_size(cx);
             }))
@@ -367,11 +383,9 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &CopyDiagnostic, _, cx| {
                 this.copy_active_diagnostic(cx);
             }))
-
             .on_action(cx.listener(|this, _: &FormatDocument, window, cx| {
                 this.format_document(window, cx);
             }))
-
             .on_action(cx.listener(|this, _: &GitRefresh, _, cx| {
                 this.git_refresh(cx);
             }))
@@ -417,19 +431,21 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &CloseModal, window, cx| {
                 this.close_modal(window, cx);
             }))
-            .on_action(cx.listener(|this, _: &gpui_component::input::MoveUp, _, cx| {
-                if this.picker.is_some() {
-                    this.picker_prev(cx);
-                }
-            }))
-            .on_action(cx.listener(|this, _: &gpui_component::input::MoveDown, _, cx| {
-                if this.picker.is_some() {
-                    this.picker_next(cx);
-                }
-            }))
-
+            .on_action(
+                cx.listener(|this, _: &gpui_component::input::MoveUp, _, cx| {
+                    if this.picker.is_some() {
+                        this.picker_prev(cx);
+                    }
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &gpui_component::input::MoveDown, _, cx| {
+                    if this.picker.is_some() {
+                        this.picker_next(cx);
+                    }
+                }),
+            )
             .key_context("Workspace")
-
             .child(
                 div()
                     .id("workspace-focus-catcher")
@@ -448,9 +464,12 @@ impl Render for Workspace {
                     .w_full()
                     .min_h(px(0.0))
                     .child(ui::activity_bar::render_activity_bar(
-                        activity, show_sidebar, git_changes, &t, cx,
+                        activity,
+                        show_sidebar,
+                        git_changes,
+                        &t,
+                        cx,
                     ))
-
                     .when(show_sidebar, |row| {
                         row.child(
                             div()
@@ -476,9 +495,9 @@ impl Render for Workspace {
                                         ),
                                         None => ui::welcome::render_no_folder_panel(&t, cx),
                                     },
-                                    Activity::Search => ui::sidebar::search::render_search_panel(
-                                        self, window, cx,
-                                    ),
+                                    Activity::Search => {
+                                        ui::sidebar::search::render_search_panel(self, window, cx)
+                                    }
                                     Activity::Git => ui::sidebar::git::render_git_panel(
                                         git_commit_input.as_ref(),
                                         git_repo,
@@ -495,83 +514,85 @@ impl Render for Workspace {
                                 }),
                         )
                     })
-
                     .child(resize_handle(ResizeKind::Sidebar, &t, cx))
                     .child(
-
                         div()
                             .flex_1()
                             .min_w(px(0.0))
                             .flex()
                             .flex_col()
                             .overflow_hidden()
-
                             .when(!terminal_maximized, |col| {
                                 col.child(
-                                div()
-                                    .flex_1()
-                                    .min_h(px(0.0))
-                                    .flex()
-                                    .flex_col()
-                                    .bg(rgba(t.editor_bg))
-
-                                    .when(!tabs.is_empty(), |d| {
-                                        d.child(ui::tab_bar::render_tab_bar(tabs, active_tab, git_repo, &t, cx))
-                                    })
-
-                                    .when(welcome, |d| d.child(ui::welcome::render_welcome(&t, cx)))
-                                    .when(!welcome, |d| {
-                                        if is_settings {
-                                            d.child(ui::settings::render_settings(&self.settings, &t, theme_ix, font_size, cx))
-                                        } else if let Some(diff) = active_diff {
-                                            d.child(ui::diff::render_diff_view(
-                                                diff, font_size, split_diff, &t, cx,
+                                    div()
+                                        .flex_1()
+                                        .min_h(px(0.0))
+                                        .flex()
+                                        .flex_col()
+                                        .bg(rgba(t.editor_bg))
+                                        .when(!tabs.is_empty(), |d| {
+                                            d.child(ui::tab_bar::render_tab_bar(
+                                                tabs, active_tab, git_repo, &t, cx,
                                             ))
-                                        } else if let Some(editor) = editor {
-                                            d.when(!breadcrumb_items.is_empty(), |d| {
-                                                d.child(ui::breadcrumbs::render_breadcrumbs(
-                                                    &breadcrumb_items,
+                                        })
+                                        .when(welcome, |d| {
+                                            d.child(ui::welcome::render_welcome(&t, cx))
+                                        })
+                                        .when(!welcome, |d| {
+                                            if is_settings {
+                                                d.child(ui::settings::render_settings(
+                                                    &self.settings,
                                                     &t,
+                                                    theme_ix,
+                                                    font_size,
                                                     cx,
                                                 ))
-                                            })
-                                            .child(
-                                                div()
-                                                    .flex_1()
-                                                    .min_h(px(0.0))
-                                                    .overflow_hidden()
-                                                    .font_family(crate::assets::MONO_FONT)
-                                                    .text_size(px(font_size))
-                                                    .child(
-                                                        Input::new(editor)
-                                                            .text_size(px(font_size))
-                                                            .h_full()
-                                                            .appearance(false)
-                                                            .bordered(false),
-                                                    ),
-                                            )
-                                        } else {
-                                            d.flex_1().on_mouse_down(
-                                                MouseButton::Left,
-                                                cx.listener(|this, _, window, _| {
-                                                    window.focus(&this.focus_handle);
-                                                }),
-                                            )
-                                        }
-                                    }),
+                                            } else if let Some(diff) = active_diff {
+                                                d.child(ui::diff::render_diff_view(
+                                                    diff, font_size, split_diff, &t, cx,
+                                                ))
+                                            } else if let Some(editor) = editor {
+                                                d.when(!breadcrumb_items.is_empty(), |d| {
+                                                    d.child(ui::breadcrumbs::render_breadcrumbs(
+                                                        &breadcrumb_items,
+                                                        &t,
+                                                        cx,
+                                                    ))
+                                                })
+                                                .child(
+                                                    div()
+                                                        .flex_1()
+                                                        .min_h(px(0.0))
+                                                        .overflow_hidden()
+                                                        .font_family(crate::assets::MONO_FONT)
+                                                        .text_size(px(font_size))
+                                                        .child(
+                                                            Input::new(editor)
+                                                                .text_size(px(font_size))
+                                                                .h_full()
+                                                                .appearance(false)
+                                                                .bordered(false),
+                                                        ),
+                                                )
+                                            } else {
+                                                d.flex_1().on_mouse_down(
+                                                    MouseButton::Left,
+                                                    cx.listener(|this, _, window, _| {
+                                                        window.focus(&this.focus_handle);
+                                                    }),
+                                                )
+                                            }
+                                        }),
                                 )
                             })
-
                             .when(!terminal_tabs.is_empty(), |col| {
-                                col.child(resize_handle(ResizeKind::Terminal, &t, cx))
-                                    .when(show_terminal, |col| {
+                                col.child(resize_handle(ResizeKind::Terminal, &t, cx)).when(
+                                    show_terminal,
+                                    |col| {
                                         if terminal_maximized {
                                             col.child(
-                                                div()
-                                                    .flex_1()
-                                                    .size_full()
-                                                    .overflow_hidden()
-                                                    .child(crate::terminal::render_terminal_panel(
+                                                div().flex_1().size_full().overflow_hidden().child(
+                                                    crate::terminal::render_terminal_panel(
                                                         crate::terminal::TerminalDock::Bottom,
                                                         terminal_tabs,
                                                         active_terminal,
@@ -579,7 +600,8 @@ impl Render for Workspace {
                                                         &terminal_tab_scroll,
                                                         &t,
                                                         cx,
-                                                    )),
+                                                    ),
+                                                ),
                                             )
                                         } else {
                                             col.child(
@@ -598,7 +620,8 @@ impl Render for Workspace {
                                                     )),
                                             )
                                         }
-                                    })
+                                    },
+                                )
                             }),
                     )
                     // Zed-style right dock: a terminal panel hugging the
@@ -606,26 +629,30 @@ impl Render for Workspace {
                     // full workspace height (alongside both the editor and
                     // the bottom terminal) and is resized by dragging the
                     // vertical handle on its left edge.
-                    .when(show_terminal_right && !terminal_right_tabs.is_empty(), |row| {
-                        row.child(resize_handle(ResizeKind::TerminalRight, &t, cx)).child(
-                            div()
-                                .w(px(terminal_right_w))
-                                .flex_shrink_0()
-                                .h_full()
-                                .overflow_hidden()
-                                .border_l_1()
-                                .border_color(rgba(t.border_variant))
-                                .child(crate::terminal::render_terminal_panel(
-                                    crate::terminal::TerminalDock::Right,
-                                    terminal_right_tabs,
-                                    active_terminal_right,
-                                    false,
-                                    &terminal_right_tab_scroll,
-                                    &t,
-                                    cx,
-                                )),
-                        )
-                    }),
+                    .when(
+                        show_terminal_right && !terminal_right_tabs.is_empty(),
+                        |row| {
+                            row.child(resize_handle(ResizeKind::TerminalRight, &t, cx))
+                                .child(
+                                    div()
+                                        .w(px(terminal_right_w))
+                                        .flex_shrink_0()
+                                        .h_full()
+                                        .overflow_hidden()
+                                        .border_l_1()
+                                        .border_color(rgba(t.border_variant))
+                                        .child(crate::terminal::render_terminal_panel(
+                                            crate::terminal::TerminalDock::Right,
+                                            terminal_right_tabs,
+                                            active_terminal_right,
+                                            false,
+                                            &terminal_right_tab_scroll,
+                                            &t,
+                                            cx,
+                                        )),
+                                )
+                        },
+                    ),
             )
             .child(ui::status_bar::render_status_bar(
                 status,
@@ -639,7 +666,6 @@ impl Render for Workspace {
                 show_terminal_right && !terminal_right_tabs.is_empty(),
                 &t,
             ))
-
             .when(panel_resize.is_some(), |root| {
                 let kind = panel_resize.unwrap().kind;
                 let overlay = div()
@@ -649,74 +675,74 @@ impl Render for Workspace {
                     .left_0()
                     .size_full()
                     .occlude()
-                    .on_mouse_move(cx.listener(
-                        |this, ev: &MouseMoveEvent, window, cx| {
-                            let Some(rz) = this.panel_resize else {
-                                return;
-                            };
-                            match rz.kind {
-                                ResizeKind::Sidebar => {
-
-                                    let dist = f32::from(ev.position.x) - 48.0;
-                                    if dist < 60.0 {
-                                        this.show_sidebar = false;
-                                    } else {
-                                        this.show_sidebar = true;
-                                        let max = f32::from(window.viewport_size().width - px(320.0)).max(220.0);
-                                        this.sidebar_width = dist.clamp(60.0, max);
-                                    }
-                                }
-                                ResizeKind::Terminal => {
-                                    let bottom = f32::from(window.viewport_size().height) - 26.0;
-                                    let dist = bottom - f32::from(ev.position.y);
-                                    let titlebar_h = 34.0;
-                                    let max_avail = (f32::from(window.viewport_size().height) - 26.0 - titlebar_h).max(120.0);
-
-                                    if dist < 45.0 {
-
-                                        this.show_terminal = false;
-                                        this.terminal_maximized = false;
-                                    } else if dist >= max_avail - 45.0 {
-
-                                        this.show_terminal = true;
-                                        this.terminal_maximized = true;
-                                        this.terminal_height = max_avail;
-                                    } else {
-
-                                        this.show_terminal = true;
-                                        this.terminal_maximized = false;
-                                        this.terminal_height = dist.clamp(45.0, max_avail - 45.0);
-                                    }
-                                }
-                                ResizeKind::TerminalRight => {
-                                    // The dock hugs the window's right edge, so its
-                                    // width is the distance from the cursor to that
-                                    // edge. Below the minimum width the dock hides,
-                                    // exactly like dragging the bottom panel flat.
-                                    let right_edge = f32::from(window.viewport_size().width);
-                                    let dist = right_edge - f32::from(ev.position.x);
-                                    let max_w = (right_edge - 320.0).max(180.0);
-
-                                    if dist < super::TERMINAL_RIGHT_MIN_WIDTH {
-                                        this.show_terminal_right = false;
-                                    } else {
-                                        this.show_terminal_right = true;
-                                        this.terminal_right_width =
-                                            dist.clamp(super::TERMINAL_RIGHT_MIN_WIDTH, max_w);
-                                    }
+                    .on_mouse_move(cx.listener(|this, ev: &MouseMoveEvent, window, cx| {
+                        let Some(rz) = this.panel_resize else {
+                            return;
+                        };
+                        match rz.kind {
+                            ResizeKind::Sidebar => {
+                                let dist = f32::from(ev.position.x) - 48.0;
+                                if dist < 60.0 {
+                                    this.show_sidebar = false;
+                                } else {
+                                    this.show_sidebar = true;
+                                    let max = f32::from(window.viewport_size().width - px(320.0))
+                                        .max(220.0);
+                                    this.sidebar_width = dist.clamp(60.0, max);
                                 }
                             }
-                            cx.stop_propagation();
-                            cx.notify();
-                        },
-                    ))
-                    .on_mouse_up(MouseButton::Left, cx.listener(
-                        |this, ev: &MouseUpEvent, _window, cx| {
+                            ResizeKind::Terminal => {
+                                let bottom = f32::from(window.viewport_size().height) - 26.0;
+                                let dist = bottom - f32::from(ev.position.y);
+                                let titlebar_h = 34.0;
+                                let max_avail =
+                                    (f32::from(window.viewport_size().height) - 26.0 - titlebar_h)
+                                        .max(120.0);
+
+                                if dist < 45.0 {
+                                    this.show_terminal = false;
+                                    this.terminal_maximized = false;
+                                } else if dist >= max_avail - 45.0 {
+                                    this.show_terminal = true;
+                                    this.terminal_maximized = true;
+                                    this.terminal_height = max_avail;
+                                } else {
+                                    this.show_terminal = true;
+                                    this.terminal_maximized = false;
+                                    this.terminal_height = dist.clamp(45.0, max_avail - 45.0);
+                                }
+                            }
+                            ResizeKind::TerminalRight => {
+                                // The dock hugs the window's right edge, so its
+                                // width is the distance from the cursor to that
+                                // edge. Below the minimum width the dock hides,
+                                // exactly like dragging the bottom panel flat.
+                                let right_edge = f32::from(window.viewport_size().width);
+                                let dist = right_edge - f32::from(ev.position.x);
+                                let max_w = (right_edge - 320.0).max(180.0);
+
+                                if dist < super::TERMINAL_RIGHT_MIN_WIDTH {
+                                    this.show_terminal_right = false;
+                                } else {
+                                    this.show_terminal_right = true;
+                                    this.terminal_right_width =
+                                        dist.clamp(super::TERMINAL_RIGHT_MIN_WIDTH, max_w);
+                                }
+                            }
+                        }
+                        cx.stop_propagation();
+                        cx.notify();
+                    }))
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        cx.listener(|this, ev: &MouseUpEvent, _window, cx| {
                             if let Some(rz) = this.panel_resize.take() {
                                 match rz.kind {
                                     ResizeKind::Sidebar => {
                                         if !this.show_sidebar {
-                                            if (f32::from(ev.position.x) - rz.start_mouse).abs() < 5.0 {
+                                            if (f32::from(ev.position.x) - rz.start_mouse).abs()
+                                                < 5.0
+                                            {
                                                 this.show_sidebar = true;
                                                 this.sidebar_width = 300.0;
                                             }
@@ -726,7 +752,9 @@ impl Render for Workspace {
                                     }
                                     ResizeKind::Terminal => {
                                         if !this.show_terminal {
-                                            if (rz.start_mouse - f32::from(ev.position.y)).abs() < 5.0 {
+                                            if (rz.start_mouse - f32::from(ev.position.y)).abs()
+                                                < 5.0
+                                            {
                                                 this.show_terminal = true;
                                                 this.terminal_height = 320.0;
                                             }
@@ -739,7 +767,9 @@ impl Render for Workspace {
                                             // Hidden by the drag: a click-sized drag
                                             // (no real movement) re-opens at the
                                             // default width, like the sidebar above.
-                                            if (rz.start_mouse - f32::from(ev.position.x)).abs() < 5.0 {
+                                            if (rz.start_mouse - f32::from(ev.position.x)).abs()
+                                                < 5.0
+                                            {
                                                 this.show_terminal_right = true;
                                                 this.terminal_right_width =
                                                     super::TERMINAL_RIGHT_DEFAULT_WIDTH;
@@ -754,15 +784,16 @@ impl Render for Workspace {
                                 this.persist_workspace_state(cx);
                                 cx.notify();
                             }
-                        },
-                    ))
-                    .on_mouse_up(MouseButton::Right, cx.listener(
-                        |this, _: &MouseUpEvent, _, cx| {
+                        }),
+                    )
+                    .on_mouse_up(
+                        MouseButton::Right,
+                        cx.listener(|this, _: &MouseUpEvent, _, cx| {
                             if this.panel_resize.take().is_some() {
                                 cx.notify();
                             }
-                        },
-                    ));
+                        }),
+                    );
                 let overlay = if kind == ResizeKind::Sidebar {
                     overlay.cursor_col_resize()
                 } else {
@@ -807,75 +838,82 @@ fn resize_handle(kind: ResizeKind, t: &Colors, cx: &mut Context<Workspace>) -> i
         base.h(px(5.0)).w_full().cursor_row_resize()
     };
 
-        base.child(line.bg(idle).group_hover("resize-handle", |s| s.bg(hot)))
-        .on_mouse_down(MouseButton::Left, cx.listener(
-        move |this, ev: &gpui::MouseDownEvent, _, cx| {
-            if ev.click_count == 2 {
-                match kind {
-                    ResizeKind::Sidebar => {
-                        this.show_sidebar = !this.show_sidebar;
-                        if this.show_sidebar && this.sidebar_width < 170.0 {
-                            this.sidebar_width = 300.0;
+    base.child(line.bg(idle).group_hover("resize-handle", |s| s.bg(hot)))
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |this, ev: &gpui::MouseDownEvent, _, cx| {
+                if ev.click_count == 2 {
+                    match kind {
+                        ResizeKind::Sidebar => {
+                            this.show_sidebar = !this.show_sidebar;
+                            if this.show_sidebar && this.sidebar_width < 170.0 {
+                                this.sidebar_width = 300.0;
+                            }
                         }
+                        ResizeKind::Terminal => {
+                            this.show_terminal = !this.show_terminal;
+                            if this.show_terminal {
+                                if this.terminal_maximized {
+                                    this.terminal_maximized = false;
+                                    this.terminal_height = 320.0;
+                                } else if this.terminal_height >= 500.0 {
+                                    this.terminal_maximized = false;
+                                    this.terminal_height = 320.0;
+                                } else {
+                                    this.terminal_maximized = true;
+                                }
+                            } else {
+                                this.terminal_maximized = false;
+                                this.terminal_height = 320.0;
+                            }
+                        }
+                        ResizeKind::TerminalRight => {
+                            this.show_terminal_right = !this.show_terminal_right;
+                            if this.show_terminal_right
+                                && this.terminal_right_width < super::TERMINAL_RIGHT_MIN_WIDTH
+                            {
+                                this.terminal_right_width = super::TERMINAL_RIGHT_DEFAULT_WIDTH;
+                            }
+                        }
+                    }
+                    this.panel_resize = None;
+                    cx.stop_propagation();
+                    cx.notify();
+                    return;
+                }
+                let (start_mouse, start_size) = match kind {
+                    ResizeKind::Sidebar => {
+                        let current_w = if this.show_sidebar {
+                            this.sidebar_width
+                        } else {
+                            0.0
+                        };
+                        (f32::from(ev.position.x), current_w)
                     }
                     ResizeKind::Terminal => {
-                        this.show_terminal = !this.show_terminal;
-                        if this.show_terminal {
-                            if this.terminal_maximized {
-
-                                this.terminal_maximized = false;
-                                this.terminal_height = 320.0;
-                            } else if this.terminal_height >= 500.0 {
-                                this.terminal_maximized = false;
-                                this.terminal_height = 320.0;
-                            } else {
-
-                                this.terminal_maximized = true;
-                            }
+                        let current_h = if this.show_terminal {
+                            this.terminal_height
                         } else {
-                            this.terminal_maximized = false;
-                            this.terminal_height = 320.0;
-                        }
+                            0.0
+                        };
+                        (f32::from(ev.position.y), current_h)
                     }
                     ResizeKind::TerminalRight => {
-                        this.show_terminal_right = !this.show_terminal_right;
-                        if this.show_terminal_right
-                            && this.terminal_right_width < super::TERMINAL_RIGHT_MIN_WIDTH
-                        {
-                            this.terminal_right_width = super::TERMINAL_RIGHT_DEFAULT_WIDTH;
-                        }
+                        let current_w = if this.show_terminal_right {
+                            this.terminal_right_width
+                        } else {
+                            0.0
+                        };
+                        (f32::from(ev.position.x), current_w)
                     }
-                }
-                this.panel_resize = None;
+                };
+                this.panel_resize = Some(PanelResizeDrag {
+                    kind,
+                    start_mouse,
+                    start_size,
+                });
                 cx.stop_propagation();
                 cx.notify();
-                return;
-            }
-            let (start_mouse, start_size) = match kind {
-                ResizeKind::Sidebar => {
-                    let current_w = if this.show_sidebar { this.sidebar_width } else { 0.0 };
-                    (f32::from(ev.position.x), current_w)
-                }
-                ResizeKind::Terminal => {
-                    let current_h = if this.show_terminal { this.terminal_height } else { 0.0 };
-                    (f32::from(ev.position.y), current_h)
-                }
-                ResizeKind::TerminalRight => {
-                    let current_w = if this.show_terminal_right {
-                        this.terminal_right_width
-                    } else {
-                        0.0
-                    };
-                    (f32::from(ev.position.x), current_w)
-                }
-            };
-            this.panel_resize = Some(PanelResizeDrag {
-                kind,
-                start_mouse,
-                start_size,
-            });
-            cx.stop_propagation();
-            cx.notify();
-        },
-    ))
+            }),
+        )
 }

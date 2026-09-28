@@ -1,8 +1,6 @@
 use std::path::Path;
 
-use gpui::{
-    div, prelude::*, px, rgba, AnyElement, Context, FontWeight, IntoElement, SharedString,
-};
+use gpui::{div, prelude::*, px, rgba, AnyElement, Context, FontWeight, IntoElement, SharedString};
 use gpui_component::scroll::ScrollableElement as _;
 
 use crate::actions::{GitDiscardFile, GitStageFile, GitUnstageFile};
@@ -56,7 +54,11 @@ pub(crate) struct ParsedDiff {
 
 pub(crate) fn parse_diff(raw: &str) -> ParsedDiff {
     let (rows, added, removed) = parse_side_by_side_diff(raw);
-    ParsedDiff { rows, added, removed }
+    ParsedDiff {
+        rows,
+        added,
+        removed,
+    }
 }
 
 pub(crate) fn render_diff_view(
@@ -102,7 +104,6 @@ pub(crate) fn render_diff_view(
         .flex_col()
         .bg(rgba(t.editor_bg))
         .child(
-
             div()
                 .h(px(36.0))
                 .w_full()
@@ -115,7 +116,6 @@ pub(crate) fn render_diff_view(
                 .border_b_1()
                 .border_color(rgba(t.border_variant))
                 .child(
-
                     div()
                         .flex()
                         .flex_row()
@@ -138,7 +138,6 @@ pub(crate) fn render_diff_view(
                             )
                         })
                         .child(
-
                             div()
                                 .px(px(6.0))
                                 .py(px(1.5))
@@ -180,14 +179,17 @@ pub(crate) fn render_diff_view(
                         ),
                 )
                 .child(
-
                     div()
                         .flex()
                         .flex_row()
                         .items_center()
                         .gap(px(6.0))
                         .child(tool_button(
-                            if split_diff { "Split [||]" } else { "Inline [=]" },
+                            if split_diff {
+                                "Split [||]"
+                            } else {
+                                "Inline [=]"
+                            },
                             t,
                             cx,
                             |this, _window, cx| {
@@ -393,7 +395,6 @@ fn hunk_header_row(
             .border_b_1()
             .border_color(rgba(t.border_variant))
             .child(
-
                 div()
                     .flex_1()
                     .min_w(px(0.0))
@@ -430,7 +431,6 @@ fn hunk_header_row(
                     ),
             )
             .child(
-
                 div()
                     .flex_1()
                     .min_w(px(0.0))
@@ -495,7 +495,6 @@ fn split_line_row(
         .flex()
         .flex_row()
         .child(
-
             div()
                 .flex_1()
                 .min_w(px(0.0))
@@ -507,7 +506,6 @@ fn split_line_row(
                 .child(render_pane_cell(left, font_size, t)),
         )
         .child(
-
             div()
                 .flex_1()
                 .min_w(px(0.0))
@@ -518,11 +516,7 @@ fn split_line_row(
         )
 }
 
-fn render_pane_cell(
-    cell: &DiffCell,
-    font_size: f32,
-    t: &Colors,
-) -> impl IntoElement {
+fn render_pane_cell(cell: &DiffCell, font_size: f32, t: &Colors) -> impl IntoElement {
     let (bg, gutter_bg, bar_color) = match cell.kind {
         DiffCellKind::Remove => (
             Some(with_alpha(t.vc_deleted, 0x22)),
@@ -538,17 +532,13 @@ fn render_pane_cell(
         DiffCellKind::Context => (None, None, None),
     };
 
-    let gutter_no = cell
-        .line_no
-        .map(|n| n.to_string())
-        .unwrap_or_default();
+    let gutter_no = cell.line_no.map(|n| n.to_string()).unwrap_or_default();
 
     div()
         .size_full()
         .flex()
         .flex_row()
         .when_some(bg, |d, bg| d.bg(rgba(bg)))
-
         .child(
             div()
                 .w(px(3.0))
@@ -556,7 +546,6 @@ fn render_pane_cell(
                 .flex_none()
                 .when_some(bar_color, |d, color| d.bg(rgba(color))),
         )
-
         .child(
             div()
                 .w(px(font_size * 3.4))
@@ -571,15 +560,10 @@ fn render_pane_cell(
                 .text_color(rgba(t.text_muted))
                 .child(SharedString::from(gutter_no)),
         )
-
         .child(render_cell_content(cell, font_size, t))
 }
 
-fn render_cell_content(
-    cell: &DiffCell,
-    font_size: f32,
-    t: &Colors,
-) -> impl IntoElement {
+fn render_cell_content(cell: &DiffCell, font_size: f32, t: &Colors) -> impl IntoElement {
     if cell.kind == DiffCellKind::Empty {
         return div()
             .flex_1()
@@ -921,9 +905,7 @@ pub fn parse_side_by_side_diff(raw: &str) -> (Vec<SideBySideRow>, usize, usize) 
                     *n += 1;
                 }
             }
-            '\\' => {
-
-            }
+            '\\' => {}
             _ => {}
         }
     }

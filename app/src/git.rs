@@ -14,7 +14,6 @@ pub enum ChangeKind {
 }
 
 impl ChangeKind {
-
     pub fn letter(self) -> &'static str {
         match self {
             ChangeKind::Modified => "M",
@@ -423,7 +422,9 @@ pub fn stage(root: &Path, rels: &[String]) -> bool {
 
 /// Stage every change in the repository (`git add -A`).
 pub fn stage_all(root: &Path) -> bool {
-    run_git(root, &["add", "-A"]).map(|(_, ok)| ok).unwrap_or(false)
+    run_git(root, &["add", "-A"])
+        .map(|(_, ok)| ok)
+        .unwrap_or(false)
 }
 
 /// Unstage the given paths (`git restore --staged`).
@@ -476,7 +477,10 @@ fn run_git(root: &Path, args: &[&str]) -> Option<(String, bool)> {
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::null());
     let out = cmd.output().ok()?;
-    Some((String::from_utf8_lossy(&out.stdout).into_owned(), out.status.success()))
+    Some((
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        out.status.success(),
+    ))
 }
 
 #[cfg(test)]
@@ -494,7 +498,6 @@ mod tests {
 
     #[test]
     fn branch_header_is_skipped_in_change_list() {
-
         let raw = "## main\0 M a.rs\0";
         let changes = parse_porcelain(raw, root());
         assert_eq!(changes.len(), 1);
@@ -577,7 +580,10 @@ mod tests {
     #[test]
     fn makes_paths_absolute() {
         let changes = parse_porcelain(" M app/src/main.rs\0", Path::new("/home/u/proj"));
-        assert_eq!(changes[0].path, PathBuf::from("/home/u/proj/app/src/main.rs"));
+        assert_eq!(
+            changes[0].path,
+            PathBuf::from("/home/u/proj/app/src/main.rs")
+        );
     }
 
     #[test]

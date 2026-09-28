@@ -1,4 +1,6 @@
-use gpui::{div, prelude::*, px, rgba, svg, Context, FontWeight, IntoElement, SharedString, Window};
+use gpui::{
+    div, prelude::*, px, rgba, svg, Context, FontWeight, IntoElement, SharedString, Window,
+};
 
 use crate::workspace::{Activity, Workspace};
 
@@ -21,7 +23,6 @@ pub(crate) fn render_activity_bar(
         .border_r_1()
         .border_color(rgba(t.border_variant))
         .py(px(8.0))
-
         .child(
             div()
                 .id("activity-pill")
@@ -73,7 +74,6 @@ pub(crate) fn render_activity_bar(
                     cx,
                 )),
         )
-
         .child(
             div()
                 .id("activity-settings-pill")
@@ -106,11 +106,7 @@ fn activity_icon(
     t: &crate::theme::Colors,
     cx: &mut Context<Workspace>,
 ) -> impl IntoElement {
-    let icon_color = if selected {
-        t.text
-    } else {
-        t.icon_muted
-    };
+    let icon_color = if selected { t.text } else { t.icon_muted };
 
     let mut item = div()
         .id(SharedString::from(id))

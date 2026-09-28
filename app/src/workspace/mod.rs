@@ -14,8 +14,8 @@ use gpui_component::input::{InputEvent, InputState, RopeExt as _, TabSize};
 use notify::Watcher as _;
 
 use crate::fs_tree::{
-    collapse_all, display_name, flatten_visible, is_same_or_descendant, load_dir,
-    merge_loaded_dir, path_after_move, valid_entry_name, TreeNode, VisibleTreeRow,
+    collapse_all, display_name, flatten_visible, is_same_or_descendant, load_dir, merge_loaded_dir,
+    path_after_move, valid_entry_name, TreeNode, VisibleTreeRow,
 };
 use crate::git::{self, GitChange, RepoStatus};
 use crate::lang;
@@ -55,7 +55,6 @@ impl OpenTab {
 
 #[derive(Clone)]
 pub(crate) struct DiffTab {
-
     pub path: PathBuf,
 
     pub rel: String,
@@ -78,7 +77,6 @@ pub(crate) enum Activity {
 }
 
 impl Activity {
-
     pub(crate) fn status_label(self) -> &'static str {
         match self {
             Activity::Explorer => "EXPLORER",
@@ -206,7 +204,6 @@ pub(crate) struct Workspace {
     /// whole tree on every event.
     pub(crate) fs_event_tx: async_channel::Sender<PathBuf>,
     /// Cached `display_name(root)` so the title bar and explorer header don't
-
     pub(crate) root_display: String,
 
     pub(crate) root_display_shared: SharedString,
@@ -243,7 +240,12 @@ pub(crate) struct Workspace {
 
     pub(crate) workspace_files_cache: Option<(PathBuf, Vec<crate::ui::picker::PickerItem>)>,
 
-    pub(crate) cached_breadcrumbs: Option<(PathBuf, usize, usize, Vec<crate::ui::breadcrumbs::BreadcrumbItem>)>,
+    pub(crate) cached_breadcrumbs: Option<(
+        PathBuf,
+        usize,
+        usize,
+        Vec<crate::ui::breadcrumbs::BreadcrumbItem>,
+    )>,
 
     // ---- Project search (VS Code-style Search view, ripgrep engine) ----
     pub(crate) search_query_input: Option<Entity<InputState>>,
@@ -287,7 +289,6 @@ pub(crate) struct PanelResizeDrag {
 }
 
 pub(crate) struct LoadedBuffer {
-
     pub text: String,
 
     pub lang_id: &'static str,
@@ -612,7 +613,11 @@ impl Workspace {
                 }
             } else if let Some(diff) = &tab.diff {
                 let name = display_name(&diff.path);
-                let label = if diff.staged { " (staged diff)" } else { " (diff)" };
+                let label = if diff.staged {
+                    " (staged diff)"
+                } else {
+                    " (diff)"
+                };
                 match &self.root {
                     Some(_) => format!("{name}{label} — {}", self.root_display),
                     None => format!("{name}{label}"),
@@ -644,7 +649,9 @@ impl Workspace {
 
     /// Get the active tab's editor
     pub fn active_editor(&self) -> Option<&Entity<InputState>> {
-        self.tabs.get(self.active_tab).and_then(|t| t.editor.as_ref())
+        self.tabs
+            .get(self.active_tab)
+            .and_then(|t| t.editor.as_ref())
     }
 
     pub fn active_path(&self) -> Option<&PathBuf> {
@@ -653,7 +660,10 @@ impl Workspace {
 
     #[allow(dead_code)]
     pub fn is_dirty(&self) -> bool {
-        self.tabs.get(self.active_tab).map(|t| t.dirty).unwrap_or(false)
+        self.tabs
+            .get(self.active_tab)
+            .map(|t| t.dirty)
+            .unwrap_or(false)
     }
 
     pub(crate) fn apply_theme(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -788,19 +798,20 @@ impl Workspace {
         .detach();
 
         let tx = self.fs_event_tx.clone();
-        let watcher = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
-            if let Ok(event) = res {
-                for p in event.paths {
-                    let path_str = p.to_string_lossy();
-                    let relevant = !path_str.contains("target")
-                        && !path_str.contains(".git")
-                        && !path_str.contains(".DS_Store");
-                    if relevant {
-                        let _ = tx.try_send(p);
+        let watcher =
+            notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
+                if let Ok(event) = res {
+                    for p in event.paths {
+                        let path_str = p.to_string_lossy();
+                        let relevant = !path_str.contains("target")
+                            && !path_str.contains(".git")
+                            && !path_str.contains(".DS_Store");
+                        if relevant {
+                            let _ = tx.try_send(p);
+                        }
                     }
                 }
-            }
-        });
+            });
 
         if let Ok(mut w) = watcher {
             let _ = w.watch(&path, notify::RecursiveMode::Recursive);
@@ -904,13 +915,11 @@ impl Workspace {
         // Native dialogs pump Windows messages; run them outside the App borrow.
         cx.spawn(async move |this, cx| {
             let path = rfd::FileDialog::new().pick_folder();
-            let _ = this.update(cx, |workspace, cx| {
-                match path {
-                    Some(path) => workspace.load_root(path, cx),
-                    None => {
-                        workspace.status = "Open folder cancelled".into();
-                        cx.notify();
-                    }
+            let _ = this.update(cx, |workspace, cx| match path {
+                Some(path) => workspace.load_root(path, cx),
+                None => {
+                    workspace.status = "Open folder cancelled".into();
+                    cx.notify();
                 }
             });
         })
@@ -922,13 +931,11 @@ impl Workspace {
         cx.notify();
         cx.spawn_in(window, async move |this, cx| {
             let path = rfd::FileDialog::new().pick_file();
-            let _ = this.update_in(cx, |workspace, window, cx| {
-                match path {
-                    Some(path) => workspace.open_file(path, window, cx),
-                    None => {
-                        workspace.status = "Open file cancelled".into();
-                        cx.notify();
-                    }
+            let _ = this.update_in(cx, |workspace, window, cx| match path {
+                Some(path) => workspace.open_file(path, window, cx),
+                None => {
+                    workspace.status = "Open file cancelled".into();
+                    cx.notify();
                 }
             });
         })
@@ -936,7 +943,6 @@ impl Workspace {
     }
 
     pub(crate) fn new_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-
         let editor = cx.new(|cx| {
             InputState::new(window, cx)
                 .code_editor("text")
@@ -998,7 +1004,6 @@ impl Workspace {
     }
 
     pub(crate) fn new_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-
         let working_dir = self
             .terminal_tabs
             .get(self.active_terminal)
@@ -1013,7 +1018,12 @@ impl Workspace {
             .as_ref()
             .and_then(|p| p.file_name())
             .and_then(|s| s.to_str())
-            .or_else(|| self.root.as_ref().and_then(|p| p.file_name()).and_then(|s| s.to_str()))
+            .or_else(|| {
+                self.root
+                    .as_ref()
+                    .and_then(|p| p.file_name())
+                    .and_then(|s| s.to_str())
+            })
             .unwrap_or("app");
         let label = format!("{folder} \u{2013} {shell_name}");
         let palette = self.theme().terminal_palette.clone();
@@ -1026,10 +1036,7 @@ impl Workspace {
         self.show_terminal = true;
         self.reveal_active_terminal_tab();
         self.focus_active_terminal(window, cx);
-        self.status = format!(
-            "Terminal {} created",
-            self.active_terminal + 1
-        );
+        self.status = format!("Terminal {} created", self.active_terminal + 1);
         cx.notify();
     }
 
@@ -1061,7 +1068,8 @@ impl Workspace {
     /// free) while every tab still fits.
     fn reveal_active_terminal_tab(&mut self) {
         if !self.terminal_tabs.is_empty() {
-            self.terminal_tab_scroll.scroll_to_item(self.active_terminal);
+            self.terminal_tab_scroll
+                .scroll_to_item(self.active_terminal);
         }
     }
 
@@ -1259,17 +1267,15 @@ impl Workspace {
         self.show_terminal_right = true;
         self.reveal_active_terminal_right_tab();
         self.focus_active_terminal_right(window, cx);
-        self.status = format!(
-            "Right terminal {} created",
-            self.active_terminal_right + 1
-        );
+        self.status = format!("Right terminal {} created", self.active_terminal_right + 1);
         cx.notify();
     }
 
     /// Scroll the right dock's tab strip so the active tab is visible.
     fn reveal_active_terminal_right_tab(&mut self) {
         if !self.terminal_right_tabs.is_empty() {
-            self.terminal_right_tab_scroll.scroll_to_item(self.active_terminal_right);
+            self.terminal_right_tab_scroll
+                .scroll_to_item(self.active_terminal_right);
         }
     }
 
@@ -1470,27 +1476,21 @@ impl Workspace {
         expand_to(&mut self.tree, path);
         self.explorer_section_expanded = true;
         self.rebuild_explorer_rows();
-        if let Some(index) = self
-            .explorer_rows
-            .iter()
-            .position(|row| row.path == path)
-        {
+        if let Some(index) = self.explorer_rows.iter().position(|row| row.path == path) {
             self.explorer_scroll_handle
                 .scroll_to_item(index, ScrollStrategy::Center);
         }
     }
 
-    pub(crate) fn open_file(
-        &mut self,
-        path: PathBuf,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn open_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         self.selected_path = Some(path.clone());
         self.reveal_tree_path(&path);
 
-        if let Some(idx) = self.tabs.iter().position(|t| t.path.as_ref() == Some(&path)) {
-
+        if let Some(idx) = self
+            .tabs
+            .iter()
+            .position(|t| t.path.as_ref() == Some(&path))
+        {
             self.active_tab = idx;
 
             if let Some(tab) = self.tabs.get_mut(idx) {
@@ -1539,7 +1539,11 @@ impl Workspace {
             }
         };
 
-        if let Some(idx) = self.tabs.iter().position(|t| t.path.as_ref() == Some(&path)) {
+        if let Some(idx) = self
+            .tabs
+            .iter()
+            .position(|t| t.path.as_ref() == Some(&path))
+        {
             self.active_tab = idx;
             if let Some(tab) = self.tabs.get_mut(idx) {
                 tab.preview = false;
@@ -1549,7 +1553,6 @@ impl Workspace {
         }
 
         let replace_preview = if let Some(active_idx) = self.tabs.get(self.active_tab) {
-
             active_idx.preview && !active_idx.dirty
         } else {
             false
@@ -1618,7 +1621,6 @@ impl Workspace {
         .detach();
 
         if replace_preview {
-
             if let Some(tab) = self.tabs.get_mut(self.active_tab) {
                 tab.path = Some(path.clone());
                 tab.dirty = false;
@@ -1630,7 +1632,6 @@ impl Workspace {
                 tab.editor = Some(editor);
             }
         } else {
-
             self.tabs.push(OpenTab {
                 path: Some(path.clone()),
                 editor: Some(editor),
@@ -1660,7 +1661,6 @@ impl Workspace {
     }
 
     pub(crate) fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-
         let tab = match self.active_tab_mut() {
             Some(t) => t,
             None => {
@@ -1691,13 +1691,12 @@ impl Workspace {
         // writing to disk. Anything missing — no language, no server, no
         // formatting capability — falls through to a plain save, so Ctrl+S
         // is never blocked on a formatter.
-        let formatter = if self.settings.editor_format_on_save
-            == crate::settings::FormatOnSaveMode::On
-        {
-            language.and_then(|lang| self.lsp.lock().unwrap().client_for(&lang))
-        } else {
-            None
-        };
+        let formatter =
+            if self.settings.editor_format_on_save == crate::settings::FormatOnSaveMode::On {
+                language.and_then(|lang| self.lsp.lock().unwrap().client_for(&lang))
+            } else {
+                None
+            };
         if let Some(client) = formatter {
             self.format_then_save(path, editor, client, window, cx);
             cx.notify();
@@ -1741,9 +1740,9 @@ impl Workspace {
             let req_text = text.clone();
             let req_path = path.clone();
             let edits = cx
-                .background_spawn(async move {
-                    client.format_document(&req_path, &req_text, tab_size)
-                })
+                .background_spawn(
+                    async move { client.format_document(&req_path, &req_text, tab_size) },
+                )
                 .await;
             // Apply the edits to the live buffer (guarded against a stale
             // snapshot), then persist whatever the buffer now contains.
@@ -1784,9 +1783,7 @@ impl Workspace {
             let write_path = path.clone();
             let write_text = text.clone();
             let result = cx
-                .background_spawn(
-                    async move { std::fs::write(&write_path, write_text.as_bytes()) },
-                )
+                .background_spawn(async move { std::fs::write(&write_path, write_text.as_bytes()) })
                 .await;
             let _ = this.update(cx, |workspace, cx| {
                 match result {
@@ -1869,9 +1866,7 @@ impl Workspace {
             let write_path = path.clone();
             let write_text = text.clone();
             let result = cx
-                .background_spawn(async move {
-                    std::fs::write(&write_path, write_text.as_bytes())
-                })
+                .background_spawn(async move { std::fs::write(&write_path, write_text.as_bytes()) })
                 .await;
 
             let _ = this.update(cx, move |workspace, cx| {
@@ -1889,8 +1884,10 @@ impl Workspace {
                                 });
                             }
                         }
-                        if let Some(editor) =
-                            workspace.tabs.get(active_idx).and_then(|t| t.editor.clone())
+                        if let Some(editor) = workspace
+                            .tabs
+                            .get(active_idx)
+                            .and_then(|t| t.editor.clone())
                         {
                             workspace.attach_language_server(&path, lang_id, &editor, cx);
                         }
@@ -1997,20 +1994,13 @@ impl Workspace {
             return true;
         }
 
-        fn apply(
-            nodes: &mut [TreeNode],
-            dir: &Path,
-            entries: &mut Option<Vec<TreeNode>>,
-        ) -> bool {
+        fn apply(nodes: &mut [TreeNode], dir: &Path, entries: &mut Option<Vec<TreeNode>>) -> bool {
             for node in nodes {
                 if node.path == dir {
                     if node.is_dir && node.expanded {
                         let previous = std::mem::take(&mut node.children);
-                        node.children = merge_loaded_dir(
-                            dir,
-                            previous,
-                            entries.take().unwrap_or_default(),
-                        );
+                        node.children =
+                            merge_loaded_dir(dir, previous, entries.take().unwrap_or_default());
                         node.children_loaded = true;
                     } else if node.is_dir && node.children_loaded {
                         node.children.clear();
@@ -2091,12 +2081,9 @@ impl Workspace {
                 ("x", false) => self.explorer_cut(cx),
                 ("v", false) => self.explorer_paste(cx),
                 ("n", true) => {
-                    let selected_folder = self
-                        .selected_path
-                        .clone()
-                        .filter(|path| path.is_dir());
+                    let selected_folder = self.selected_path.clone().filter(|path| path.is_dir());
                     self.start_inline_create(CreatingKind::Folder, selected_folder, window, cx);
-                },
+                }
                 _ => return,
             }
             cx.stop_propagation();
@@ -2156,9 +2143,8 @@ impl Workspace {
                     let path = row.path.clone();
                     self.toggle_dir(&path, cx);
                 } else if row.depth > 0 {
-                    if let Some(parent_ix) = (0..current_ix)
-                        .rev()
-                        .find(|&ix| rows[ix].depth < row.depth)
+                    if let Some(parent_ix) =
+                        (0..current_ix).rev().find(|&ix| rows[ix].depth < row.depth)
                     {
                         self.select_explorer_index(parent_ix, cx);
                     }
@@ -2236,7 +2222,6 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-
         self.inline_creating = None;
         self.inline_renaming = None;
 
@@ -2276,12 +2261,10 @@ impl Workspace {
             state.focus(window, cx);
             state
         });
-        cx.subscribe(&input, |this, _state, event: &InputEvent, cx| {
-            match event {
-                InputEvent::PressEnter { .. } => this.confirm_inline_create(cx),
-                InputEvent::Blur => this.cancel_inline_create(cx),
-                _ => {}
-            }
+        cx.subscribe(&input, |this, _state, event: &InputEvent, cx| match event {
+            InputEvent::PressEnter { .. } => this.confirm_inline_create(cx),
+            InputEvent::Blur => this.cancel_inline_create(cx),
+            _ => {}
         })
         .detach();
 
@@ -2302,9 +2285,7 @@ impl Workspace {
         let target_path = creating.parent_dir.join(name);
         let name_is_valid = valid_entry_name(name);
         let target_exists = target_path.exists();
-        let invalid = !name_is_valid
-            || !self.path_in_workspace(&target_path)
-            || target_exists;
+        let invalid = !name_is_valid || !self.path_in_workspace(&target_path) || target_exists;
         if invalid {
             self.status = if !name_is_valid || !self.path_in_workspace(&target_path) {
                 "Enter a valid name (without path separators)".into()
@@ -2376,12 +2357,10 @@ impl Workspace {
             state.focus(window, cx);
             state
         });
-        cx.subscribe(&input, |this, _state, event: &InputEvent, cx| {
-            match event {
-                InputEvent::PressEnter { .. } => this.confirm_inline_rename(cx),
-                InputEvent::Blur => this.cancel_inline_rename(cx),
-                _ => {}
-            }
+        cx.subscribe(&input, |this, _state, event: &InputEvent, cx| match event {
+            InputEvent::PressEnter { .. } => this.confirm_inline_rename(cx),
+            InputEvent::Blur => this.cancel_inline_rename(cx),
+            _ => {}
         })
         .detach();
         self.inline_renaming = Some(InlineRenaming { path, input });
@@ -2482,7 +2461,10 @@ impl Workspace {
         self.diagnostics_by_path = diagnostics
             .into_iter()
             .map(|(path, value)| {
-                (path_after_move(&path, source, destination).unwrap_or(path), value)
+                (
+                    path_after_move(&path, source, destination).unwrap_or(path),
+                    value,
+                )
             })
             .collect();
         if let Some(path) = self.selected_path.as_ref() {
@@ -2631,7 +2613,6 @@ impl Workspace {
                 self.status = "Pasted explorer item".into();
             }
             Err(error) => {
-
                 if destination.is_dir() {
                     let _ = std::fs::remove_dir_all(&destination);
                 } else {
@@ -2669,7 +2650,9 @@ impl Workspace {
 
     pub(crate) fn copy_path(&mut self, path: &Path, cx: &mut Context<Self>) {
         self.selected_path = Some(path.to_path_buf());
-        cx.write_to_clipboard(gpui::ClipboardItem::new_string(path.to_string_lossy().to_string()));
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(
+            path.to_string_lossy().to_string(),
+        ));
         self.status = format!("Copied path: {}", path.display());
         cx.notify();
     }
@@ -2681,7 +2664,9 @@ impl Workspace {
             path
         };
         self.selected_path = Some(path.to_path_buf());
-        cx.write_to_clipboard(gpui::ClipboardItem::new_string(rel.to_string_lossy().to_string()));
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(
+            rel.to_string_lossy().to_string(),
+        ));
         self.status = format!("Copied relative path: {}", rel.display());
         cx.notify();
     }
@@ -2719,10 +2704,18 @@ impl Workspace {
                 });
                 self.diagnostics_by_path
                     .retain(|tab_path, _| !is_same_or_descendant(path, tab_path));
-                if self.selected_path.as_ref().is_some_and(|selected| is_same_or_descendant(path, selected)) {
+                if self
+                    .selected_path
+                    .as_ref()
+                    .is_some_and(|selected| is_same_or_descendant(path, selected))
+                {
                     self.selected_path = path.parent().map(Path::to_path_buf);
                 }
-                if self.pending_open.as_ref().is_some_and(|pending| is_same_or_descendant(path, pending)) {
+                if self
+                    .pending_open
+                    .as_ref()
+                    .is_some_and(|pending| is_same_or_descendant(path, pending))
+                {
                     self.pending_open = None;
                 }
                 self.active_tab = active_editor_path
@@ -2778,11 +2771,7 @@ impl Workspace {
         true
     }
 
-    pub(crate) fn start_server_for_open_buffers(
-        &mut self,
-        server: &str,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn start_server_for_open_buffers(&mut self, server: &str, cx: &mut Context<Self>) {
         let languages: Vec<&'static str> = self
             .lsp
             .lock()
@@ -2798,7 +2787,10 @@ impl Workspace {
                 let path = tab.path.clone()?;
                 let editor = tab.editor.clone()?;
                 let lang = tab.language()?.to_string();
-                languages.iter().any(|&l| l == lang).then_some((path, lang, editor))
+                languages
+                    .iter()
+                    .any(|&l| l == lang)
+                    .then_some((path, lang, editor))
             })
             .collect();
 
@@ -2813,7 +2805,6 @@ impl Workspace {
         diagnostics: Vec<lsp_types::Diagnostic>,
         cx: &mut Context<Self>,
     ) {
-
         let shared = Arc::new(diagnostics);
 
         self.diagnostics_by_path
@@ -2862,7 +2853,9 @@ impl Workspace {
                     if crate::lsp::paths_match(p, tab_path) && !diags.is_empty() {
                         let msg = diags
                             .iter()
-                            .map(|d| format!("{}: {}", d.source.as_deref().unwrap_or("error"), d.message))
+                            .map(|d| {
+                                format!("{}: {}", d.source.as_deref().unwrap_or("error"), d.message)
+                            })
                             .collect::<Vec<_>>()
                             .join("\n");
                         cx.write_to_clipboard(gpui::ClipboardItem::new_string(msg));
@@ -2959,7 +2952,13 @@ impl Workspace {
             cx.notify();
             return;
         };
-        self.run_git_op(root, Vec::new(), |root, _| git::stage_all(&root), "Staged all changes", cx);
+        self.run_git_op(
+            root,
+            Vec::new(),
+            |root, _| git::stage_all(&root),
+            "Staged all changes",
+            cx,
+        );
     }
 
     pub(crate) fn git_unstage_all(&mut self, cx: &mut Context<Self>) {
@@ -2971,7 +2970,13 @@ impl Workspace {
         let rels: Vec<String> = self
             .git
             .as_ref()
-            .map(|g| g.changes.iter().filter(|c| c.is_staged()).map(|c| c.rel.clone()).collect())
+            .map(|g| {
+                g.changes
+                    .iter()
+                    .filter(|c| c.is_staged())
+                    .map(|c| c.rel.clone())
+                    .collect()
+            })
             .unwrap_or_default();
         if rels.is_empty() {
             self.status = "Nothing staged".into();
@@ -3086,10 +3091,7 @@ impl Workspace {
         if let Some(input) = &self.git_commit_input {
             return input.clone();
         }
-        let input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder(placeholder_text)
-        });
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder_text));
 
         cx.subscribe(&input, |this, _state, event: &InputEvent, cx| {
             if matches!(event, InputEvent::PressEnter { .. }) {
@@ -3171,11 +3173,12 @@ impl Workspace {
         };
         let staged = change.is_staged();
 
-        if let Some(idx) = self
-            .tabs
-            .iter()
-            .position(|t| t.diff.as_ref().map(|d| d.path == path && d.staged == staged) == Some(true))
-        {
+        if let Some(idx) = self.tabs.iter().position(|t| {
+            t.diff
+                .as_ref()
+                .map(|d| d.path == path && d.staged == staged)
+                == Some(true)
+        }) {
             self.active_tab = idx;
             cx.notify();
             return;
@@ -3216,7 +3219,6 @@ impl Workspace {
                     let text = if !raw.trim().is_empty() {
                         Some(raw)
                     } else {
-
                         std::fs::read_to_string(&tab_path_bg)
                             .ok()
                             .map(|content| git::new_file_diff(&rel, &content))
@@ -3330,7 +3332,6 @@ impl Workspace {
                 .await;
             match edits {
                 Some(edits) if !edits.is_empty() => {
-
                     let _ = editor_weak.update_in(cx, |state, window, cx| {
                         state.apply_lsp_edits(&edits, window, cx);
                     });
@@ -3347,8 +3348,7 @@ impl Workspace {
                 }
                 None => {
                     let _ = this.update(cx, |workspace, cx| {
-                        workspace.status =
-                            "Formatting not supported by the language server".into();
+                        workspace.status = "Formatting not supported by the language server".into();
                         cx.notify();
                     });
                 }
@@ -3388,7 +3388,10 @@ impl Workspace {
     pub(crate) fn reload_settings(&mut self, cx: &mut Context<Self>) {
         self.settings = crate::settings::Settings::load();
         let themes = theme::all();
-        if let Some(pos) = themes.iter().position(|t| t.name == self.settings.workbench_color_theme) {
+        if let Some(pos) = themes
+            .iter()
+            .position(|t| t.name == self.settings.workbench_color_theme)
+        {
             self.theme_ix = pos;
             let palette = &themes[pos].terminal_palette;
             for tab in &self.terminal_tabs {
@@ -3436,7 +3439,11 @@ impl Workspace {
         }
     }
 
-    pub(crate) fn trigger_auto_save_after_delay(&mut self, _tab_idx: usize, cx: &mut Context<Self>) {
+    pub(crate) fn trigger_auto_save_after_delay(
+        &mut self,
+        _tab_idx: usize,
+        cx: &mut Context<Self>,
+    ) {
         if self.settings.editor_auto_save != crate::settings::AutoSaveMode::AfterDelay {
             return;
         }
@@ -3530,7 +3537,6 @@ impl Workspace {
                 self.tabs.remove(0);
                 self.active_tab = 0;
             } else {
-
                 self.tabs.remove(index);
 
                 if index <= self.active_tab && self.active_tab > 0 {
@@ -3545,11 +3551,21 @@ impl Workspace {
         }
     }
 
-    pub(crate) fn handle_close_tab(&mut self, _: &crate::actions::CloseTab, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn handle_close_tab(
+        &mut self,
+        _: &crate::actions::CloseTab,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.close_tab(self.active_tab, window, cx);
     }
 
-    pub(crate) fn handle_next_tab(&mut self, _: &crate::actions::NextTab, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn handle_next_tab(
+        &mut self,
+        _: &crate::actions::NextTab,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.tabs.len() > 1 {
             self.active_tab = (self.active_tab + 1) % self.tabs.len();
             self.persist_workspace_state(cx);
@@ -3558,7 +3574,12 @@ impl Workspace {
         }
     }
 
-    pub(crate) fn handle_prev_tab(&mut self, _: &crate::actions::PrevTab, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn handle_prev_tab(
+        &mut self,
+        _: &crate::actions::PrevTab,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.tabs.len() > 1 {
             self.active_tab = (self.active_tab + self.tabs.len() - 1) % self.tabs.len();
             self.persist_workspace_state(cx);
@@ -3567,7 +3588,12 @@ impl Workspace {
         }
     }
 
-    pub(crate) fn handle_switch_tab(&mut self, action: &crate::actions::SwitchTab, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn handle_switch_tab(
+        &mut self,
+        action: &crate::actions::SwitchTab,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if action.index < self.tabs.len() {
             self.active_tab = action.index;
             self.persist_workspace_state(cx);
@@ -3576,7 +3602,12 @@ impl Workspace {
         }
     }
 
-    pub(crate) fn handle_close_tab_at(&mut self, action: &crate::actions::CloseTabAt, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn handle_close_tab_at(
+        &mut self,
+        action: &crate::actions::CloseTabAt,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if action.index < self.tabs.len() {
             self.close_tab(action.index, window, cx);
         }
@@ -3634,11 +3665,8 @@ impl Workspace {
             .map(|r| r.as_path())
             .unwrap_or(Path::new("."));
         let global_state = crate::storage::GlobalState::load();
-        let mut recent_files: Vec<PathBuf> = self
-            .tabs
-            .iter()
-            .filter_map(|t| t.path.clone())
-            .collect();
+        let mut recent_files: Vec<PathBuf> =
+            self.tabs.iter().filter_map(|t| t.path.clone()).collect();
         for p in global_state.recent_files {
             if !recent_files.contains(&p) {
                 if let Some(root) = &self.root {
@@ -3687,17 +3715,15 @@ impl Workspace {
                 .placeholder("Search files by name (append : to go to line or @ to go to symbol)")
         });
 
-        cx.subscribe(&input, |this, _state, event: &InputEvent, cx| {
-            match event {
-                InputEvent::Change => {
-                    this.on_picker_input_changed(cx);
-                }
-                InputEvent::PressEnter { .. } => {
-                    this.picker_confirm_pending = true;
-                    cx.notify();
-                }
-                _ => {}
+        cx.subscribe(&input, |this, _state, event: &InputEvent, cx| match event {
+            InputEvent::Change => {
+                this.on_picker_input_changed(cx);
             }
+            InputEvent::PressEnter { .. } => {
+                this.picker_confirm_pending = true;
+                cx.notify();
+            }
+            _ => {}
         })
         .detach();
 
@@ -3722,21 +3748,18 @@ impl Workspace {
         }
 
         let items = crate::ui::picker::command_palette_items();
-        let input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Type a command or action...")
-        });
+        let input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Type a command or action..."));
 
-        cx.subscribe(&input, |this, _state, event: &InputEvent, cx| {
-            match event {
-                InputEvent::Change => {
-                    this.on_picker_input_changed(cx);
-                }
-                InputEvent::PressEnter { .. } => {
-                    this.picker_confirm_pending = true;
-                    cx.notify();
-                }
-                _ => {}
+        cx.subscribe(&input, |this, _state, event: &InputEvent, cx| match event {
+            InputEvent::Change => {
+                this.on_picker_input_changed(cx);
             }
+            InputEvent::PressEnter { .. } => {
+                this.picker_confirm_pending = true;
+                cx.notify();
+            }
+            _ => {}
         })
         .detach();
 
@@ -3769,18 +3792,14 @@ impl Workspace {
             .unwrap_or(1);
 
         let placeholder = format!("Go to line:column (1 - {})...", total_lines);
-        let input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder(placeholder)
-        });
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
 
-        cx.subscribe(&input, |this, _state, event: &InputEvent, cx| {
-            match event {
-                InputEvent::PressEnter { .. } => {
-                    this.picker_confirm_pending = true;
-                    cx.notify();
-                }
-                _ => {}
+        cx.subscribe(&input, |this, _state, event: &InputEvent, cx| match event {
+            InputEvent::PressEnter { .. } => {
+                this.picker_confirm_pending = true;
+                cx.notify();
             }
+            _ => {}
         })
         .detach();
 
@@ -3815,17 +3834,15 @@ impl Workspace {
                 .placeholder("Select Language Mode (e.g. JavaScript, Python, Rust, Go...)")
         });
 
-        cx.subscribe(&input, |this, _state, event: &InputEvent, cx| {
-            match event {
-                InputEvent::Change => {
-                    this.on_picker_input_changed(cx);
-                }
-                InputEvent::PressEnter { .. } => {
-                    this.picker_confirm_pending = true;
-                    cx.notify();
-                }
-                _ => {}
+        cx.subscribe(&input, |this, _state, event: &InputEvent, cx| match event {
+            InputEvent::Change => {
+                this.on_picker_input_changed(cx);
             }
+            InputEvent::PressEnter { .. } => {
+                this.picker_confirm_pending = true;
+                cx.notify();
+            }
+            _ => {}
         })
         .detach();
 
@@ -4006,7 +4023,9 @@ impl Workspace {
             "preferences.settings" => self.open_settings(cx),
             "theme.github_dark" => self.apply_theme_by_name("GitHub Dark", window, cx),
             "theme.github_light" => self.apply_theme_by_name("GitHub Light", window, cx),
-            "theme.github_dark_dimmed" => self.apply_theme_by_name("GitHub Dark Dimmed", window, cx),
+            "theme.github_dark_dimmed" => {
+                self.apply_theme_by_name("GitHub Dark Dimmed", window, cx)
+            }
             "theme.github_dark_high_contrast" => {
                 self.apply_theme_by_name("GitHub Dark High Contrast", window, cx)
             }

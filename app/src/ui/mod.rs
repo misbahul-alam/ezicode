@@ -1,12 +1,12 @@
 pub mod activity_bar;
 pub mod app_icon;
+pub mod breadcrumbs;
 pub mod common;
 pub mod diff;
+pub mod picker;
 pub mod settings;
 pub mod sidebar;
 pub mod status_bar;
 pub mod tab_bar;
 pub mod titlebar;
 pub mod welcome;
-pub mod picker;
-pub mod breadcrumbs;

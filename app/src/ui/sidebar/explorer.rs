@@ -10,16 +10,13 @@ use gpui_component::{input::Input, menu::ContextMenuExt, tooltip::Tooltip, Sizab
 use crate::actions::{
     ExplorerCollapseAll, ExplorerCopy, ExplorerCopyPath, ExplorerCopyRelativePath, ExplorerCut,
     ExplorerDelete, ExplorerNewFile, ExplorerNewFolder, ExplorerPaste, ExplorerRefresh,
-    ExplorerRename, ExplorerRevealInFinder,
-    OpenFolder,
+    ExplorerRename, ExplorerRevealInFinder, OpenFolder,
 };
 use crate::file_icons;
 use crate::fs_tree::VisibleTreeRow;
 use crate::theme::Colors;
 use crate::ui::common::icon_img;
-use crate::workspace::{
-    CreatingKind, ExplorerDrag, InlineCreating, InlineRenaming, Workspace,
-};
+use crate::workspace::{CreatingKind, ExplorerDrag, InlineCreating, InlineRenaming, Workspace};
 
 const INDENT_STEP: f32 = 16.0;
 const BASE_PAD: f32 = 12.0;
@@ -74,10 +71,7 @@ pub(crate) fn render_tree(
         .on_click(cx.listener(|this, _, _, cx| {
             this.toggle_explorer_section(cx);
         }))
-
-        .drag_over::<ExplorerDrag>(move |this, _, _, _| {
-            this.bg(rgba(drop_color))
-        })
+        .drag_over::<ExplorerDrag>(move |this, _, _, _| this.bg(rgba(drop_color)))
         .on_drop(cx.listener(move |this, drag: &ExplorerDrag, _window, cx| {
             if let Some(root) = drop_root.clone() {
                 this.move_entry(&drag.path, &root, cx);
@@ -101,7 +95,10 @@ pub(crate) fn render_tree(
                     )
                 })
                 .when(p4.is_some(), |m| {
-                    m.menu("Copy Path", Box::new(ExplorerCopyPath { path: p4.unwrap() }))
+                    m.menu(
+                        "Copy Path",
+                        Box::new(ExplorerCopyPath { path: p4.unwrap() }),
+                    )
                 })
                 .separator()
                 .menu("Open Folder…", Box::new(OpenFolder))
@@ -139,7 +136,6 @@ pub(crate) fn render_tree(
                         .text_size(px(14.0))
                         .font_weight(FontWeight::BOLD)
                         .text_color(rgba(t.text))
-
                         .child(folder.clone()),
                 ),
         )
@@ -202,42 +198,46 @@ pub(crate) fn render_tree(
         let item_count = rows.len() + if inline_pos.is_some() { 1 } else { 0 };
         let list_focus = focus_handle.clone();
         let colors = *t;
-        let list = uniform_list("explorer-tree-list", item_count, move |range, _window, app| {
-            let row_data = Arc::clone(&row_data);
-            let open = open.clone();
-            let selected_path = selected_path.clone();
-            let creating = creating.clone();
-            let renaming = renaming.clone();
-            workspace.update(app, |_, cx| {
-                range
-                    .map(|idx| {
-                        if inline_pos == Some(idx) {
-                            return inline_create_row(
-                                creating.as_ref().expect("inline row has creation state"),
-                                inline_depth,
-                                &colors,
+        let list = uniform_list(
+            "explorer-tree-list",
+            item_count,
+            move |range, _window, app| {
+                let row_data = Arc::clone(&row_data);
+                let open = open.clone();
+                let selected_path = selected_path.clone();
+                let creating = creating.clone();
+                let renaming = renaming.clone();
+                workspace.update(app, |_, cx| {
+                    range
+                        .map(|idx| {
+                            if inline_pos == Some(idx) {
+                                return inline_create_row(
+                                    creating.as_ref().expect("inline row has creation state"),
+                                    inline_depth,
+                                    &colors,
+                                    cx,
+                                )
+                                .into_any_element();
+                            }
+                            let row_idx = if inline_pos.is_some_and(|inline_ix| idx > inline_ix) {
+                                idx - 1
+                            } else {
+                                idx
+                            };
+                            tree_row(
+                                idx,
+                                &row_data[row_idx],
+                                open.as_ref(),
+                                selected_path.as_ref(),
+                                renaming.as_ref(),
+                                colors,
                                 cx,
                             )
-                            .into_any_element();
-                        }
-                        let row_idx = if inline_pos.is_some_and(|inline_ix| idx > inline_ix) {
-                            idx - 1
-                        } else {
-                            idx
-                        };
-                        tree_row(
-                            idx,
-                            &row_data[row_idx],
-                            open.as_ref(),
-                            selected_path.as_ref(),
-                            renaming.as_ref(),
-                            colors,
-                            cx,
-                        )
-                    })
-                    .collect::<Vec<AnyElement>>()
-            })
-        })
+                        })
+                        .collect::<Vec<AnyElement>>()
+                })
+            },
+        )
         .track_scroll(scroll_handle)
         .track_focus(&list_focus)
         .w_full()
@@ -387,7 +387,13 @@ fn inline_rename_row(
             .items_center()
             .justify_center()
             .flex_none()
-            .child(svg().path(path).w(px(12.0)).h(px(12.0)).text_color(rgba(t.icon_muted)))
+            .child(
+                svg()
+                    .path(path)
+                    .w(px(12.0))
+                    .h(px(12.0))
+                    .text_color(rgba(t.icon_muted)),
+            )
     } else {
         div().w(px(16.0)).h(px(16.0)).flex_none()
     };
@@ -569,7 +575,6 @@ fn tree_row(
                 this.open_file(path_click.clone(), window, cx);
             }
         }))
-
         .on_drag(ExplorerDrag { path: path.clone() }, |drag, _, _, cx| {
             cx.stop_propagation();
             cx.new(|_| drag.clone())
@@ -579,9 +584,7 @@ fn tree_row(
         let drop_path = path.clone();
         let drop_color = t.element_selected;
         row = row
-            .drag_over::<ExplorerDrag>(move |this, _, _, _| {
-                this.bg(rgba(drop_color))
-            })
+            .drag_over::<ExplorerDrag>(move |this, _, _, _| this.bg(rgba(drop_color)))
             .on_drop(cx.listener(move |this, drag: &ExplorerDrag, _window, cx| {
                 this.move_entry(&drag.path, &drop_path, cx);
             }));
@@ -606,9 +609,19 @@ fn tree_row(
 
     row.context_menu(move |menu, _window, _cx| {
         menu.when(is_dir, |m| {
-            m.menu("New File…", Box::new(ExplorerNewFile { parent: Some(path_c6.clone()) }))
-                .menu("New Folder…", Box::new(ExplorerNewFolder { parent: Some(path_c7.clone()) }))
-                .separator()
+            m.menu(
+                "New File…",
+                Box::new(ExplorerNewFile {
+                    parent: Some(path_c6.clone()),
+                }),
+            )
+            .menu(
+                "New Folder…",
+                Box::new(ExplorerNewFolder {
+                    parent: Some(path_c7.clone()),
+                }),
+            )
+            .separator()
         })
         .menu("Cut", Box::new(ExplorerCut))
         .menu("Copy", Box::new(ExplorerCopy))
@@ -616,20 +629,36 @@ fn tree_row(
         .separator()
         .menu(
             "Reveal in File Explorer",
-            Box::new(ExplorerRevealInFinder { path: path_c1.clone() }),
+            Box::new(ExplorerRevealInFinder {
+                path: path_c1.clone(),
+            }),
         )
         .separator()
         .menu(
             "Copy Path",
-            Box::new(ExplorerCopyPath { path: path_c2.clone() }),
+            Box::new(ExplorerCopyPath {
+                path: path_c2.clone(),
+            }),
         )
         .menu(
             "Copy Relative Path",
-            Box::new(ExplorerCopyRelativePath { path: path_c3.clone() }),
+            Box::new(ExplorerCopyRelativePath {
+                path: path_c3.clone(),
+            }),
         )
         .separator()
-        .menu("Rename…", Box::new(ExplorerRename { path: path_c4.clone() }))
-        .menu("Delete", Box::new(ExplorerDelete { path: path_c5.clone() }))
+        .menu(
+            "Rename…",
+            Box::new(ExplorerRename {
+                path: path_c4.clone(),
+            }),
+        )
+        .menu(
+            "Delete",
+            Box::new(ExplorerDelete {
+                path: path_c5.clone(),
+            }),
+        )
     })
     .into_any_element()
 }

@@ -207,7 +207,20 @@ fn regex_escape(literal: &str) -> String {
     for c in literal.chars() {
         if matches!(
             c,
-            '\\' | '.' | '+' | '*' | '?' | '(' | ')' | '|' | '[' | ']' | '{' | '}' | '^' | '$' | '#'
+            '\\' | '.'
+                | '+'
+                | '*'
+                | '?'
+                | '('
+                | ')'
+                | '|'
+                | '['
+                | ']'
+                | '{'
+                | '}'
+                | '^'
+                | '$'
+                | '#'
         ) {
             out.push('\\');
         }
@@ -530,7 +543,11 @@ fn is_word_char(c: char) -> bool {
 }
 
 fn is_word_hit(text: &str, s: usize, e: usize) -> bool {
-    let before = text[..s].chars().next_back().map(is_word_char).unwrap_or(false);
+    let before = text[..s]
+        .chars()
+        .next_back()
+        .map(is_word_char)
+        .unwrap_or(false);
     let after = text[e..].chars().next().map(is_word_char).unwrap_or(false);
     !before && !after
 }

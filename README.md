@@ -386,6 +386,20 @@ ezicode/
 
 ---
 
+## 🤝 Contributing
+
+Pull requests are welcome. Before opening one, please make sure the code is formatted and passes the checks that CI runs on every PR:
+
+```bash
+cargo fmt --all           # required — CI fails on unformatted code
+cargo check --workspace --all-targets
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+All three commands operate on the workspace (the `app` crate). The vendored dependencies under `components/`, `components/gpui` and `gpui-terminal/` are upstream code that gets re-synced, so they are intentionally not workspace members and are not covered by these checks.
+
+---
+
 <div align="center">
 
 Made with ❤️ by the **olovalabs** team.
