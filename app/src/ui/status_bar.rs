@@ -33,6 +33,9 @@ pub(crate) fn render_status_bar(
     diagnostic_counts: Option<(usize, usize)>,
     lang: Option<&str>,
     lsp: LspIndicator,
+    /// Whether the right-hand terminal dock is open (drives the icon's
+    /// active styling, like Zed's dock toggles in the status bar).
+    right_terminal_open: bool,
     t: &Colors,
 ) -> impl IntoElement {
     let (dot, dot_color, lsp_label) = lsp.parts(t);
@@ -219,6 +222,39 @@ pub(crate) fn render_status_bar(
                                 .w(px(13.0))
                                 .h(px(13.0))
                                 .text_color(rgba(t.text)),
+                        ),
+                )
+                // Right terminal dock toggle — the rightmost control in the
+                // bar, so it sits in the bottom-right corner like Zed's panel
+                // toggles. Opens a *separate* terminal panel (own PTY
+                // sessions) docked to the right edge of the workspace.
+                .child(
+                    div()
+                        .id("status-terminal-right-btn")
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .rounded(px(3.0))
+                        .px(px(2.0))
+                        .py(px(1.0))
+                        .hover(|s| s.bg(rgba(t.ghost_hover)))
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(
+                                Box::new(crate::actions::ToggleTerminalRight),
+                                cx,
+                            );
+                        })
+                        .child(
+                            svg()
+                                .path("ui_icons/terminal_panel_right.svg")
+                                .w(px(14.0))
+                                .h(px(14.0))
+                                .text_color(rgba(if right_terminal_open {
+                                    t.text
+                                } else {
+                                    t.text_muted
+                                })),
                         ),
                 ),
         )

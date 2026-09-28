@@ -94,6 +94,7 @@ pub(crate) fn render_titlebar(title: &str, t: &Colors, theme_ix: usize) -> impl 
                             .separator()
                             .menu("Toggle Primary Side Bar", Box::new(ToggleSidebar))
                             .menu("Toggle Terminal", Box::new(ToggleTerminal))
+                            .menu("Toggle Right Terminal Panel", Box::new(ToggleTerminalRight))
                             .separator()
                             .menu("Zoom In (Ctrl++)", Box::new(IncreaseFontSize))
                             .menu("Zoom Out (Ctrl+-)", Box::new(DecreaseFontSize))
@@ -102,6 +103,7 @@ pub(crate) fn render_titlebar(title: &str, t: &Colors, theme_ix: usize) -> impl 
                         .child(menu_btn("m-term", "Terminal", t, |menu, _, _| {
                             menu.menu("New Terminal (Ctrl+Shift+`)", Box::new(NewTerminal))
                                 .menu("Toggle Terminal (Ctrl+J)", Box::new(ToggleTerminal))
+                                .menu("Toggle Right Terminal Panel", Box::new(ToggleTerminalRight))
                         }))
                         .child(menu_btn("m-help", "Help", t, |menu, _, _| {
                             menu.menu("About", Box::new(About))

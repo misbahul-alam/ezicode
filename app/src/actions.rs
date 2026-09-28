@@ -18,6 +18,9 @@ actions!(
         ToggleSidebar,
         ToggleTerminal,
         NewTerminal,
+        /// Toggle the Zed-style terminal panel docked to the right edge.
+        /// Fully independent of the bottom panel: separate PTY sessions.
+        ToggleTerminalRight,
         About,
         ExplorerRefresh,
         ExplorerCollapseAll,

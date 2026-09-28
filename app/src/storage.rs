@@ -30,6 +30,10 @@ fn default_terminal_height() -> f32 {
     320.0
 }
 
+fn default_terminal_right_width() -> f32 {
+    420.0
+}
+
 fn default_true() -> bool {
     true
 }
@@ -44,10 +48,14 @@ pub struct LayoutState {
     pub sidebar_width: f32,
     #[serde(default = "default_terminal_height")]
     pub terminal_height: f32,
+    #[serde(default = "default_terminal_right_width")]
+    pub terminal_right_width: f32,
     #[serde(default = "default_true")]
     pub show_sidebar: bool,
     #[serde(default)]
     pub show_terminal: bool,
+    #[serde(default)]
+    pub show_terminal_right: bool,
     #[serde(default)]
     pub terminal_maximized: bool,
     #[serde(default = "default_activity")]
@@ -59,8 +67,10 @@ impl Default for LayoutState {
         Self {
             sidebar_width: default_sidebar_width(),
             terminal_height: default_terminal_height(),
+            terminal_right_width: default_terminal_right_width(),
             show_sidebar: default_true(),
             show_terminal: false,
+            show_terminal_right: false,
             terminal_maximized: false,
             activity: default_activity(),
         }
@@ -279,8 +289,10 @@ mod tests {
             layout: LayoutState {
                 sidebar_width: 280.0,
                 terminal_height: 250.0,
+                terminal_right_width: 420.0,
                 show_sidebar: true,
                 show_terminal: true,
+                show_terminal_right: true,
                 terminal_maximized: false,
                 activity: "Search".to_string(),
             },
@@ -321,9 +333,38 @@ mod tests {
         assert_eq!(state.active_tab, 0);
         assert_eq!(state.layout.sidebar_width, 300.0);
         assert_eq!(state.layout.terminal_height, 320.0);
+        assert_eq!(state.layout.terminal_right_width, 420.0);
         assert!(state.layout.show_sidebar);
         assert!(!state.layout.show_terminal);
+        assert!(!state.layout.show_terminal_right);
         assert_eq!(state.layout.activity, "Explorer");
         assert!(state.expanded_folders.is_empty());
+    }
+
+    /// Workspace files written before the right terminal dock existed have no
+    /// `terminal_right_width` / `show_terminal_right` keys. They must keep
+    /// loading, with the dock's serde defaults filling the gap — a stale
+    /// layout file can never brick a workspace.
+    #[test]
+    fn test_layout_without_right_dock_fields_still_loads() {
+        let old_json = r#"{
+            "root": "/tmp/legacy",
+            "layout": {
+                "sidebar_width": 280.0,
+                "terminal_height": 250.0,
+                "show_sidebar": true,
+                "show_terminal": true,
+                "terminal_maximized": false,
+                "activity": "Explorer"
+            }
+        }"#;
+
+        let state: WorkspaceState = serde_json::from_str(old_json).unwrap();
+        assert_eq!(state.layout.sidebar_width, 280.0);
+        assert_eq!(state.layout.terminal_height, 250.0);
+        assert!(state.layout.show_terminal);
+        // Right-dock defaults, not a parse error.
+        assert_eq!(state.layout.terminal_right_width, 420.0);
+        assert!(!state.layout.show_terminal_right);
     }
 }
