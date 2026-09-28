@@ -28,16 +28,50 @@ impl AutoSaveMode {
     }
 }
 
+/// Whether saving a file first asks its language server to format the buffer
+/// — Zed's `format_on_save` setting. The manual command is always available
+/// as Shift+Alt+F.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FormatOnSaveMode {
+    #[serde(alias = "off", alias = "OFF", alias = "false", alias = "none", alias = "disabled")]
+    Off,
+    #[serde(alias = "on", alias = "ON", alias = "true", alias = "enabled")]
+    On,
+}
+
+impl Default for FormatOnSaveMode {
+    fn default() -> Self {
+        FormatOnSaveMode::Off
+    }
+}
+
+impl FormatOnSaveMode {
+    pub fn description(&self) -> &'static str {
+        match self {
+            FormatOnSaveMode::Off => "Saving writes the buffer as-is (Shift+Alt+F formats on demand).",
+            FormatOnSaveMode::On => "Saving asks the language server to format the buffer first.",
+        }
+    }
+}
+
 fn default_font_size() -> f32 {
     14.5
 }
 
 fn default_theme() -> String {
-    "One Dark Pro".to_string()
+    // Must name a theme that actually ships: the value is written into a
+    // fresh settings.json and matched by name at startup ("GitHub Dark" is
+    // what `theme::default_index` falls back to).
+    "GitHub Dark".to_string()
 }
 
 fn default_auto_save() -> AutoSaveMode {
     AutoSaveMode::Off
+}
+
+fn default_format_on_save() -> FormatOnSaveMode {
+    FormatOnSaveMode::Off
 }
 
 fn default_auto_save_delay() -> u64 {
@@ -65,6 +99,9 @@ pub struct Settings {
     #[serde(rename = "editor.tabSize", default = "default_tab_size")]
     pub editor_tab_size: usize,
 
+    #[serde(rename = "editor.formatOnSave", default = "default_format_on_save")]
+    pub editor_format_on_save: FormatOnSaveMode,
+
     #[serde(rename = "terminal.integrated.shell", default, skip_serializing_if = "Option::is_none")]
     pub terminal_integrated_shell: Option<String>,
 }
@@ -77,6 +114,7 @@ impl Default for Settings {
             editor_auto_save: default_auto_save(),
             editor_auto_save_delay: default_auto_save_delay(),
             editor_tab_size: default_tab_size(),
+            editor_format_on_save: default_format_on_save(),
             terminal_integrated_shell: None,
         }
     }

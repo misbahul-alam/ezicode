@@ -973,7 +973,20 @@ impl LspClient {
         self.request(method, params, REQUEST_TIMEOUT)
     }
 
-    pub fn format_document(&self, path: &Path, text: &str) -> Option<Vec<lsp_types::TextEdit>> {
+    /// Request whole-document formatting (`textDocument/formatting`) for the
+    /// current contents of `path`.
+    ///
+    /// `tab_size` is the editor's configured `editor.tabSize`, forwarded as
+    /// the LSP `FormattingOptions.tab_size` so servers that respect it
+    /// (rust-analyzer, clangd, typescript-language-server, …) indent exactly
+    /// like the editor does. Returns `None` when the server does not
+    /// advertise formatting support.
+    pub fn format_document(
+        &self,
+        path: &Path,
+        text: &str,
+        tab_size: u32,
+    ) -> Option<Vec<lsp_types::TextEdit>> {
         if !self.supports(|c| c.document_formatting_provider.is_some()) {
             return None;
         }
@@ -981,7 +994,7 @@ impl LspClient {
         let params = DocumentFormattingParams {
             text_document: TextDocumentIdentifier::new(uri),
             options: FormattingOptions {
-                tab_size: 4,
+                tab_size,
                 insert_spaces: true,
                 properties: Default::default(),
                 trim_trailing_whitespace: None,

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://zed.dev/schema/themes/v0.1.0.json",
+  "$schema": "https://zed.dev/schema/themes/v0.2.0.json",
   "name": "GitHub Theme",
   "author": "Pyae Sone Aung",
   "themes": [
@@ -8,12 +8,12 @@
       "name": "GitHub Light",
       "style": {
         "accents": [
-          "#006edbff",
-          "#30a147ff",
-          "#b88700ff",
-          "#df0c24ff",
-          "#ce2c85ff",
-          "#894cebff"
+          "#0969daff",
+          "#1a7f37ff",
+          "#9a6700ff",
+          "#cf222eff",
+          "#bf3989ff",
+          "#8250dfff"
         ],
         "background.appearance": "opaque",
         "background": "#ffffffff",
@@ -64,7 +64,7 @@
         "hidden.background": "#eff2f5ff",
         "hidden.border": "#818b981a",
         "hint": "#59636eff",
-        "hint.background": "#f6f8faff",
+        "hint.background": "#818b981f",
         "hint.border": "#d1d9e0b3",
         "icon": "#1f2328ff",
         "icon.background": "#ffffffff",
@@ -72,12 +72,13 @@
         "icon.accent": "#0969daff",
         "icon.muted": "#59636eff",
         "icon.disabled": "#818b98ff",
+        "icon.placeholder": "#59636eff",
         "ignored": "#59636eff",
         "ignored.background": "#eff2f5ff",
         "ignored.border": "#818b981a",
-        "info": "#9a6700ff",
-        "info.background": "#f6f8faff",
-        "info.border": "#d1d9e0b3",
+        "info": "#0969daff",
+        "info.background": "#ddf4ffff",
+        "info.border": "#54aeff66",
         "link_text.hover": "#0969daff",
         "modified": "#9a6700ff",
         "modified.background": "#fff8c5ff",
@@ -139,6 +140,7 @@
         "text.muted": "#1f2328ff",
         "text.placeholder": "#59636eff",
         "title_bar.background": "#f6f8faff",
+        "title_bar.inactive_background": "#ffffffff",
         "toolbar.background": "#ffffffff",
         "unreachable": "#818b98ff",
         "unreachable.background": "#eff2f5ff",
@@ -160,8 +162,8 @@
         "vim.replace.foreground": "#ffffffff",
         "vim.replace.background": "#bf3989ff",
         "warning": "#9a6700ff",
-        "warning.background": "#f6f8faff",
-        "warning.border": "#d1d9e0b3",
+        "warning.background": "#fff8c5ff",
+        "warning.border": "#d4a72c66",
         "players": [
           {
             "cursor": "#006edbff",
@@ -221,7 +223,7 @@
             "font_weight": null
           },
           "constructor": {
-            "color": "#cf222eff",
+            "color": "#953800ff",
             "font_style": null,
             "font_weight": null
           },
@@ -439,7 +441,7 @@
       "style": {
         "accents": [
           "#006edbff",
-          null,
+          "#179b9bff",
           "#b88700ff",
           "#ce2c85ff"
         ],
@@ -492,7 +494,7 @@
         "hidden.background": "#eff2f5ff",
         "hidden.border": "#818b981a",
         "hint": "#59636eff",
-        "hint.background": "#f6f8faff",
+        "hint.background": "#818b981f",
         "hint.border": "#d1d9e0b3",
         "icon": "#1f2328ff",
         "icon.background": "#ffffffff",
@@ -500,12 +502,13 @@
         "icon.accent": "#0969daff",
         "icon.muted": "#59636eff",
         "icon.disabled": "#818b98ff",
+        "icon.placeholder": "#59636eff",
         "ignored": "#59636eff",
         "ignored.background": "#eff2f5ff",
         "ignored.border": "#818b981a",
-        "info": "#9a6700ff",
-        "info.background": "#f6f8faff",
-        "info.border": "#d1d9e0b3",
+        "info": "#0969daff",
+        "info.background": "#ddf4ffff",
+        "info.border": "#54aeff66",
         "link_text.hover": "#0969daff",
         "modified": "#9a6700ff",
         "modified.background": "#fff8c5ff",
@@ -567,6 +570,7 @@
         "text.muted": "#1f2328ff",
         "text.placeholder": "#59636eff",
         "title_bar.background": "#f6f8faff",
+        "title_bar.inactive_background": "#ffffffff",
         "toolbar.background": "#ffffffff",
         "unreachable": "#818b98ff",
         "unreachable.background": "#eff2f5ff",
@@ -588,8 +592,8 @@
         "vim.replace.foreground": "#ffffffff",
         "vim.replace.background": "#bf3989ff",
         "warning": "#9a6700ff",
-        "warning.background": "#f6f8faff",
-        "warning.border": "#d1d9e0b3",
+        "warning.background": "#fff8c5ff",
+        "warning.border": "#d4a72c66",
         "players": [
           {
             "cursor": "#006edbff",
@@ -597,7 +601,9 @@
             "selection": "#006edb66"
           },
           {
-            "selection": null
+            "cursor": "#179b9bff",
+            "background": "#179b9bff",
+            "selection": "#179b9b66"
           },
           {
             "cursor": "#b88700ff",
@@ -637,7 +643,7 @@
             "font_weight": null
           },
           "constructor": {
-            "color": "#cf222eff",
+            "color": "#953800ff",
             "font_style": null,
             "font_weight": null
           },
@@ -854,12 +860,12 @@
       "name": "GitHub Light High Contrast",
       "style": {
         "accents": [
-          "#006edbff",
-          "#30a147ff",
-          "#b88700ff",
-          "#df0c24ff",
-          "#ce2c85ff",
-          "#894cebff"
+          "#0349b4ff",
+          "#055d20ff",
+          "#744500ff",
+          "#a0111fff",
+          "#971368ff",
+          "#622cbcff"
         ],
         "background.appearance": "opaque",
         "background": "#ffffffff",
@@ -910,7 +916,7 @@
         "hidden.background": "#e0e6ebff",
         "hidden.border": "#59636e1f",
         "hint": "#454c54ff",
-        "hint.background": "#e6eaefff",
+        "hint.background": "#e0e6ebff",
         "hint.border": "#454c54ff",
         "icon": "#010409ff",
         "icon.background": "#ffffffff",
@@ -918,12 +924,13 @@
         "icon.accent": "#023b95ff",
         "icon.muted": "#454c54ff",
         "icon.disabled": "#59636eff",
+        "icon.placeholder": "#454c54ff",
         "ignored": "#454c54ff",
         "ignored.background": "#e0e6ebff",
         "ignored.border": "#59636e1f",
-        "info": "#603700ff",
-        "info.background": "#e6eaefff",
-        "info.border": "#454c54ff",
+        "info": "#023b95ff",
+        "info.background": "#dff7ffff",
+        "info.border": "#368cf9ff",
         "link_text.hover": "#023b95ff",
         "modified": "#603700ff",
         "modified.background": "#fcf7beff",
@@ -985,6 +992,7 @@
         "text.muted": "#010409ff",
         "text.placeholder": "#454c54ff",
         "title_bar.background": "#eff2f5ff",
+        "title_bar.inactive_background": "#ffffffff",
         "toolbar.background": "#ffffffff",
         "unreachable": "#59636eff",
         "unreachable.background": "#e0e6ebff",
@@ -1006,8 +1014,8 @@
         "vim.replace.foreground": "#ffffffff",
         "vim.replace.background": "#971368ff",
         "warning": "#603700ff",
-        "warning.background": "#e6eaefff",
-        "warning.border": "#454c54ff",
+        "warning.background": "#fcf7beff",
+        "warning.border": "#b58407ff",
         "players": [
           {
             "cursor": "#006edbff",
@@ -1067,7 +1075,7 @@
             "font_weight": null
           },
           "constructor": {
-            "color": "#a0111fff",
+            "color": "#702c00ff",
             "font_style": null,
             "font_weight": null
           },
@@ -1338,7 +1346,7 @@
         "hidden.background": "#eff2f5ff",
         "hidden.border": "#818b981a",
         "hint": "#59636eff",
-        "hint.background": "#f6f8faff",
+        "hint.background": "#818b981f",
         "hint.border": "#d1d9e0b3",
         "icon": "#1f2328ff",
         "icon.background": "#ffffffff",
@@ -1346,12 +1354,13 @@
         "icon.accent": "#0969daff",
         "icon.muted": "#59636eff",
         "icon.disabled": "#818b98ff",
+        "icon.placeholder": "#59636eff",
         "ignored": "#59636eff",
         "ignored.background": "#eff2f5ff",
         "ignored.border": "#818b981a",
-        "info": "#9a6700ff",
-        "info.background": "#f6f8faff",
-        "info.border": "#d1d9e0b3",
+        "info": "#0969daff",
+        "info.background": "#ddf4ffff",
+        "info.border": "#54aeff66",
         "link_text.hover": "#0969daff",
         "modified": "#9a6700ff",
         "modified.background": "#fff8c5ff",
@@ -1413,6 +1422,7 @@
         "text.muted": "#1f2328ff",
         "text.placeholder": "#59636eff",
         "title_bar.background": "#f6f8faff",
+        "title_bar.inactive_background": "#ffffffff",
         "toolbar.background": "#ffffffff",
         "unreachable": "#818b98ff",
         "unreachable.background": "#eff2f5ff",
@@ -1434,8 +1444,8 @@
         "vim.replace.foreground": "#ffffffff",
         "vim.replace.background": "#bf3989ff",
         "warning": "#9a6700ff",
-        "warning.background": "#f6f8faff",
-        "warning.border": "#d1d9e0b3",
+        "warning.background": "#fff8c5ff",
+        "warning.border": "#d4a72c66",
         "players": [
           {
             "cursor": "#179b9bff",
@@ -1485,7 +1495,7 @@
             "font_weight": null
           },
           "constructor": {
-            "color": "#cf222eff",
+            "color": "#953800ff",
             "font_style": null,
             "font_weight": null
           },
@@ -1702,12 +1712,12 @@
       "name": "GitHub Dark",
       "style": {
         "accents": [
-          "#0576ffff",
-          "#2f6f37ff",
-          "#895906ff",
-          "#eb3342ff",
-          "#d34591ff",
-          "#975bf1ff"
+          "#79c0ffff",
+          "#56d364ff",
+          "#e3b341ff",
+          "#ffa198ff",
+          "#ff9bceff",
+          "#d2a8ffff"
         ],
         "background.appearance": "opaque",
         "background": "#0d1117ff",
@@ -1758,7 +1768,7 @@
         "hidden.background": "#212830ff",
         "hidden.border": "#656c761a",
         "hint": "#9198a1ff",
-        "hint.background": "#151b23ff",
+        "hint.background": "#656c7633",
         "hint.border": "#3d444db3",
         "icon": "#f0f6fcff",
         "icon.background": "#0d1117ff",
@@ -1766,12 +1776,13 @@
         "icon.accent": "#4493f8ff",
         "icon.muted": "#9198a1ff",
         "icon.disabled": "#656c76ff",
+        "icon.placeholder": "#9198a1ff",
         "ignored": "#9198a1ff",
         "ignored.background": "#212830ff",
         "ignored.border": "#656c761a",
-        "info": "#d29922ff",
-        "info.background": "#151b23ff",
-        "info.border": "#3d444db3",
+        "info": "#4493f8ff",
+        "info.background": "#388bfd1a",
+        "info.border": "#388bfd66",
         "link_text.hover": "#4493f8ff",
         "modified": "#d29922ff",
         "modified.background": "#bb800926",
@@ -1833,6 +1844,7 @@
         "text.muted": "#f0f6fcff",
         "text.placeholder": "#9198a1ff",
         "title_bar.background": "#010409ff",
+        "title_bar.inactive_background": "#0d1117ff",
         "toolbar.background": "#0d1117ff",
         "unreachable": "#656c76ff",
         "unreachable.background": "#212830ff",
@@ -1854,8 +1866,8 @@
         "vim.replace.foreground": "#ffffffff",
         "vim.replace.background": "#bf4b8aff",
         "warning": "#d29922ff",
-        "warning.background": "#151b23ff",
-        "warning.border": "#3d444db3",
+        "warning.background": "#bb800926",
+        "warning.border": "#bb800966",
         "players": [
           {
             "cursor": "#0576ffff",
@@ -1915,7 +1927,7 @@
             "font_weight": null
           },
           "constructor": {
-            "color": "#ff7b72ff",
+            "color": "#ffa657ff",
             "font_style": null,
             "font_weight": null
           },
@@ -2133,7 +2145,7 @@
       "style": {
         "accents": [
           "#0576ffff",
-          null,
+          "#106c70ff",
           "#895906ff",
           "#d34591ff"
         ],
@@ -2186,7 +2198,7 @@
         "hidden.background": "#212830ff",
         "hidden.border": "#656c761a",
         "hint": "#9198a1ff",
-        "hint.background": "#151b23ff",
+        "hint.background": "#656c7633",
         "hint.border": "#3d444db3",
         "icon": "#f0f6fcff",
         "icon.background": "#0d1117ff",
@@ -2194,12 +2206,13 @@
         "icon.accent": "#4493f8ff",
         "icon.muted": "#9198a1ff",
         "icon.disabled": "#656c76ff",
+        "icon.placeholder": "#9198a1ff",
         "ignored": "#9198a1ff",
         "ignored.background": "#212830ff",
         "ignored.border": "#656c761a",
-        "info": "#d29922ff",
-        "info.background": "#151b23ff",
-        "info.border": "#3d444db3",
+        "info": "#4493f8ff",
+        "info.background": "#388bfd1a",
+        "info.border": "#388bfd66",
         "link_text.hover": "#4493f8ff",
         "modified": "#d29922ff",
         "modified.background": "#bb800926",
@@ -2261,6 +2274,7 @@
         "text.muted": "#f0f6fcff",
         "text.placeholder": "#9198a1ff",
         "title_bar.background": "#010409ff",
+        "title_bar.inactive_background": "#0d1117ff",
         "toolbar.background": "#0d1117ff",
         "unreachable": "#656c76ff",
         "unreachable.background": "#212830ff",
@@ -2282,8 +2296,8 @@
         "vim.replace.foreground": "#ffffffff",
         "vim.replace.background": "#bf4b8aff",
         "warning": "#d29922ff",
-        "warning.background": "#151b23ff",
-        "warning.border": "#3d444db3",
+        "warning.background": "#bb800926",
+        "warning.border": "#bb800966",
         "players": [
           {
             "cursor": "#0576ffff",
@@ -2291,7 +2305,9 @@
             "selection": "#0576ff66"
           },
           {
-            "selection": null
+            "cursor": "#106c70ff",
+            "background": "#106c70ff",
+            "selection": "#106c7066"
           },
           {
             "cursor": "#895906ff",
@@ -2331,7 +2347,7 @@
             "font_weight": null
           },
           "constructor": {
-            "color": "#ff7b72ff",
+            "color": "#ffa657ff",
             "font_style": null,
             "font_weight": null
           },
@@ -2548,12 +2564,12 @@
       "name": "GitHub Dark High Contrast",
       "style": {
         "accents": [
-          "#0576ffff",
-          "#2f6f37ff",
-          "#895906ff",
-          "#eb3342ff",
-          "#d34591ff",
-          "#975bf1ff"
+          "#91cbffff",
+          "#4ae168ff",
+          "#f7c843ff",
+          "#ffb1afff",
+          "#ffadd4ff",
+          "#dbb7ffff"
         ],
         "background.appearance": "opaque",
         "background": "#010409ff",
@@ -2604,7 +2620,7 @@
         "hidden.background": "#262c36ff",
         "hidden.border": "#656c761a",
         "hint": "#b7bdc8ff",
-        "hint.background": "#151b23ff",
+        "hint.background": "#212830ff",
         "hint.border": "#b7bdc8ff",
         "icon": "#ffffffff",
         "icon.background": "#010409ff",
@@ -2612,12 +2628,13 @@
         "icon.accent": "#74b9ffff",
         "icon.muted": "#b7bdc8ff",
         "icon.disabled": "#656c76ff",
+        "icon.placeholder": "#b7bdc8ff",
         "ignored": "#b7bdc8ff",
         "ignored.background": "#262c36ff",
         "ignored.border": "#656c761a",
-        "info": "#f0b72fff",
-        "info.background": "#151b23ff",
-        "info.border": "#b7bdc8ff",
+        "info": "#74b9ffff",
+        "info.background": "#5cacff1a",
+        "info.border": "#5cacffff",
         "link_text.hover": "#74b9ffff",
         "modified": "#f0b72fff",
         "modified.background": "#edaa2726",
@@ -2679,6 +2696,7 @@
         "text.muted": "#ffffffff",
         "text.placeholder": "#b7bdc8ff",
         "title_bar.background": "#010409ff",
+        "title_bar.inactive_background": "#151b23ff",
         "toolbar.background": "#010409ff",
         "unreachable": "#656c76ff",
         "unreachable.background": "#262c36ff",
@@ -2700,8 +2718,8 @@
         "vim.replace.foreground": "#ffffffff",
         "vim.replace.background": "#9c1d6aff",
         "warning": "#f0b72fff",
-        "warning.background": "#151b23ff",
-        "warning.border": "#b7bdc8ff",
+        "warning.background": "#edaa2726",
+        "warning.border": "#edaa27ff",
         "players": [
           {
             "cursor": "#0576ffff",
@@ -2761,7 +2779,7 @@
             "font_weight": null
           },
           "constructor": {
-            "color": "#ff9492ff",
+            "color": "#ffb757ff",
             "font_style": null,
             "font_weight": null
           },
@@ -3032,7 +3050,7 @@
         "hidden.background": "#212830ff",
         "hidden.border": "#656c761a",
         "hint": "#9198a1ff",
-        "hint.background": "#151b23ff",
+        "hint.background": "#656c7633",
         "hint.border": "#3d444db3",
         "icon": "#f0f6fcff",
         "icon.background": "#0d1117ff",
@@ -3040,12 +3058,13 @@
         "icon.accent": "#4493f8ff",
         "icon.muted": "#9198a1ff",
         "icon.disabled": "#656c76ff",
+        "icon.placeholder": "#9198a1ff",
         "ignored": "#9198a1ff",
         "ignored.background": "#212830ff",
         "ignored.border": "#656c761a",
-        "info": "#d29922ff",
-        "info.background": "#151b23ff",
-        "info.border": "#3d444db3",
+        "info": "#4493f8ff",
+        "info.background": "#388bfd1a",
+        "info.border": "#388bfd66",
         "link_text.hover": "#4493f8ff",
         "modified": "#d29922ff",
         "modified.background": "#bb800926",
@@ -3107,6 +3126,7 @@
         "text.muted": "#f0f6fcff",
         "text.placeholder": "#9198a1ff",
         "title_bar.background": "#010409ff",
+        "title_bar.inactive_background": "#0d1117ff",
         "toolbar.background": "#0d1117ff",
         "unreachable": "#656c76ff",
         "unreachable.background": "#212830ff",
@@ -3128,8 +3148,8 @@
         "vim.replace.foreground": "#ffffffff",
         "vim.replace.background": "#bf4b8aff",
         "warning": "#d29922ff",
-        "warning.background": "#151b23ff",
-        "warning.border": "#3d444db3",
+        "warning.background": "#bb800926",
+        "warning.border": "#bb800966",
         "players": [
           {
             "cursor": "#106c70ff",
@@ -3179,7 +3199,7 @@
             "font_weight": null
           },
           "constructor": {
-            "color": "#ff7b72ff",
+            "color": "#ffa657ff",
             "font_style": null,
             "font_weight": null
           },
@@ -3396,12 +3416,12 @@
       "name": "GitHub Dark Dimmed",
       "style": {
         "accents": [
-          "#0576ffff",
-          "#2f6f37ff",
-          "#895906ff",
-          "#eb3342ff",
-          "#d34591ff",
-          "#975bf1ff"
+          "#6cb6ffff",
+          "#6bc46dff",
+          "#daaa3fff",
+          "#ff938aff",
+          "#fc8dc7ff",
+          "#dcbdfbff"
         ],
         "background.appearance": "opaque",
         "background": "#212830ff",
@@ -3452,7 +3472,7 @@
         "hidden.background": "#2a313cff",
         "hidden.border": "#656c761a",
         "hint": "#9198a1ff",
-        "hint.background": "#262c36ff",
+        "hint.background": "#656c7633",
         "hint.border": "#3d444db3",
         "icon": "#d1d7e0ff",
         "icon.background": "#212830ff",
@@ -3460,12 +3480,13 @@
         "icon.accent": "#478be6ff",
         "icon.muted": "#9198a1ff",
         "icon.disabled": "#656c76ff",
+        "icon.placeholder": "#9198a1ff",
         "ignored": "#9198a1ff",
         "ignored.background": "#2a313cff",
         "ignored.border": "#656c761a",
-        "info": "#c69026ff",
-        "info.background": "#262c36ff",
-        "info.border": "#3d444db3",
+        "info": "#478be6ff",
+        "info.background": "#4184e41a",
+        "info.border": "#4184e466",
         "link_text.hover": "#478be6ff",
         "modified": "#c69026ff",
         "modified.background": "#ae7c1426",
@@ -3527,6 +3548,7 @@
         "text.muted": "#d1d7e0ff",
         "text.placeholder": "#9198a1ff",
         "title_bar.background": "#151b23ff",
+        "title_bar.inactive_background": "#212830ff",
         "toolbar.background": "#212830ff",
         "unreachable": "#656c76ff",
         "unreachable.background": "#2a313cff",
@@ -3548,8 +3570,8 @@
         "vim.replace.foreground": "#f0f6fcff",
         "vim.replace.background": "#ae4c82ff",
         "warning": "#c69026ff",
-        "warning.background": "#262c36ff",
-        "warning.border": "#3d444db3",
+        "warning.background": "#ae7c1426",
+        "warning.border": "#ae7c1466",
         "players": [
           {
             "cursor": "#0576ffff",
@@ -3609,7 +3631,7 @@
             "font_weight": null
           },
           "constructor": {
-            "color": "#f47067ff",
+            "color": "#f69d50ff",
             "font_style": null,
             "font_weight": null
           },

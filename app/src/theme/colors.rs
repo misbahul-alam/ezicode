@@ -155,6 +155,74 @@ impl Colors {
         }
     }
 
+    /// Immutable twin of [`Colors::get_mut`], used to read base-palette
+    /// values during refinement.
+    pub(crate) fn get(&self, field: &str) -> Option<u32> {
+        match field {
+            "background" => Some(self.background),
+            "surface" => Some(self.surface),
+            "elevated_surface" => Some(self.elevated_surface),
+            "element_bg" => Some(self.element_bg),
+            "element_hover" => Some(self.element_hover),
+            "element_active" => Some(self.element_active),
+            "element_selected" => Some(self.element_selected),
+            "ghost_hover" => Some(self.ghost_hover),
+            "ghost_active" => Some(self.ghost_active),
+            "border" => Some(self.border),
+            "border_variant" => Some(self.border_variant),
+            "border_focused" => Some(self.border_focused),
+            "text" => Some(self.text),
+            "text_muted" => Some(self.text_muted),
+            "text_accent" => Some(self.text_accent),
+            "icon" => Some(self.icon),
+            "icon_muted" => Some(self.icon_muted),
+            "icon_accent" => Some(self.icon_accent),
+            "title_bar" => Some(self.title_bar),
+            "status_bar" => Some(self.status_bar),
+            "panel" => Some(self.panel),
+            "toolbar" => Some(self.toolbar),
+            "tab_bar" => Some(self.tab_bar),
+            "tab_active_bg" => Some(self.tab_active_bg),
+            "tab_inactive_bg" => Some(self.tab_inactive_bg),
+            "tab_active_fg" => Some(self.tab_active_fg),
+            "tab_inactive_fg" => Some(self.tab_inactive_fg),
+            "editor_bg" => Some(self.editor_bg),
+            "editor_fg" => Some(self.editor_fg),
+            "terminal_bg" => Some(self.terminal_bg),
+            "vc_added" => Some(self.vc_added),
+            "vc_modified" => Some(self.vc_modified),
+            "vc_deleted" => Some(self.vc_deleted),
+            _ => None,
+        }
+    }
+
+    /// Fill every still-missing token from the light or dark base palette,
+    /// selected by the theme's `appearance`.
+    ///
+    /// This mirrors Zed's `refine_theme_style`, which completes a user theme
+    /// against the default colors for its appearance: a theme file only has
+    /// to define the tokens it cares about, and the rest still render
+    /// sensibly (light text on a dark base, dark text on a light base)
+    /// instead of leaking the magenta `MISSING` sentinel into the UI.
+    ///
+    /// Runs *after* the contextual derivations in `parse_family` (tab bar
+    /// from toolbar/panel/surface, active tab from the editor, …) so those
+    /// more specific fallbacks always win over the base palette.
+    pub(crate) fn refine_from_base(&mut self, appearance: &str) {
+        let base = if appearance == "light" {
+            &BASE_LIGHT
+        } else {
+            &BASE_DARK
+        };
+        for (field, _) in KEY_MAP {
+            if let Some(slot) = self.get_mut(field) {
+                if *slot == Self::MISSING {
+                    *slot = base.get(field).unwrap_or(Self::MISSING);
+                }
+            }
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn is_complete(&self) -> bool {
         !self.values().contains(&Self::MISSING)
@@ -203,6 +271,84 @@ pub(crate) const FALLBACKS: &[(&str, u32)] = &[
     ("vc_deleted", 0xe06c76ff),
 ];
 
+/// Base dark palette used by [`Colors::refine_from_base`]: the exact final
+/// token set of the shipped "GitHub Dark" theme (file values plus its
+/// derivations), so refining that theme is a no-op and any incomplete dark
+/// user theme degrades to the editor's default look.
+pub(crate) const BASE_DARK: Colors = Colors {
+    background: 0x0d1117ff,
+    surface: 0x010409ff,
+    elevated_surface: 0x010409ff,
+    element_bg: 0x656c7633,
+    element_hover: 0x656c7633,
+    element_active: 0x656c7633,
+    element_selected: 0x656c7633,
+    ghost_hover: 0x656c7633,
+    ghost_active: 0x656c7633,
+    border: 0x3d444dff,
+    border_variant: 0x3d444db3,
+    border_focused: 0x1f6febff,
+    text: 0xf0f6fcff,
+    text_muted: 0xf0f6fcff,
+    text_accent: 0x4493f8ff,
+    icon: 0xf0f6fcff,
+    icon_muted: 0x9198a1ff,
+    icon_accent: 0x4493f8ff,
+    title_bar: 0x010409ff,
+    status_bar: 0x010409ff,
+    panel: 0x010409ff,
+    toolbar: 0x0d1117ff,
+    tab_bar: 0x010409ff,
+    tab_active_bg: 0x0d1117ff,
+    tab_inactive_bg: 0x010409ff,
+    tab_active_fg: 0xf0f6fcff,
+    tab_inactive_fg: 0xf0f6fcff,
+    editor_bg: 0x0d1117ff,
+    editor_fg: 0xf0f6fcff,
+    terminal_bg: 0x010409ff,
+    vc_added: 0x27a657ff,
+    vc_modified: 0xd3b020ff,
+    vc_deleted: 0xe06c76ff,
+};
+
+/// Base light palette used by [`Colors::refine_from_base`]: the exact final
+/// token set of the shipped "GitHub Light" theme.
+pub(crate) const BASE_LIGHT: Colors = Colors {
+    background: 0xffffffff,
+    surface: 0xf6f8faff,
+    elevated_surface: 0xffffffff,
+    element_bg: 0x818b981f,
+    element_hover: 0x818b981f,
+    element_active: 0x818b981f,
+    element_selected: 0x818b981f,
+    ghost_hover: 0x818b981f,
+    ghost_active: 0x818b981f,
+    border: 0xd1d9e0ff,
+    border_variant: 0xd1d9e0b3,
+    border_focused: 0x0969daff,
+    text: 0x1f2328ff,
+    text_muted: 0x1f2328ff,
+    text_accent: 0x0969daff,
+    icon: 0x1f2328ff,
+    icon_muted: 0x59636eff,
+    icon_accent: 0x0969daff,
+    title_bar: 0xf6f8faff,
+    status_bar: 0xf6f8faff,
+    panel: 0xf6f8faff,
+    toolbar: 0xffffffff,
+    tab_bar: 0xf6f8faff,
+    tab_active_bg: 0xffffffff,
+    tab_inactive_bg: 0xf6f8faff,
+    tab_active_fg: 0x1f2328ff,
+    tab_inactive_fg: 0x1f2328ff,
+    editor_bg: 0xffffffff,
+    editor_fg: 0x1f2328ff,
+    terminal_bg: 0xf6f8faff,
+    vc_added: 0x27a657ff,
+    vc_modified: 0xd3b020ff,
+    vc_deleted: 0xe06c76ff,
+};
+
 pub(crate) fn parse_hex(s: &str) -> Option<u32> {
     let hex = s.strip_prefix('#')?;
     if hex.len() == 6 {
@@ -221,5 +367,43 @@ mod tests {
         assert_eq!(parse_hex("#282c34"), Some(0x282c34ff));
         assert_eq!(parse_hex("#83899480"), Some(0x83899480));
         assert_eq!(parse_hex("nope"), None);
+    }
+
+    #[test]
+    fn base_palettes_match_the_shipped_github_themes() {
+        // `refine_from_base` must be a no-op for the themes the base
+        // constants were extracted from — if a shipped GitHub theme changes,
+        // the constants must be regenerated with it.
+        let themes = crate::theme::embedded_themes();
+        let dark = themes
+            .iter()
+            .find(|t| t.name == "GitHub Dark")
+            .expect("GitHub Dark ships");
+        assert_eq!(dark.colors, BASE_DARK);
+        let light = themes
+            .iter()
+            .find(|t| t.name == "GitHub Light")
+            .expect("GitHub Light ships");
+        assert_eq!(light.colors, BASE_LIGHT);
+    }
+
+    #[test]
+    fn refine_fills_every_token_and_keeps_appearance_contrast() {
+        let mut minimal = Colors::all_missing();
+        minimal.background = 0x050505ff;
+        minimal.editor_bg = 0x050505ff;
+        minimal.editor_fg = 0xeeeeeeff;
+        minimal.refine_from_base("dark");
+        assert!(minimal.is_complete());
+        // Base dark text on the theme's own dark background: readable.
+        assert_eq!(minimal.text, BASE_DARK.text);
+
+        let mut light = Colors::all_missing();
+        light.background = 0xfefefeff;
+        light.editor_bg = 0xfefefeff;
+        light.editor_fg = 0x111111ff;
+        light.refine_from_base("light");
+        assert!(light.is_complete());
+        assert_eq!(light.text, BASE_LIGHT.text);
     }
 }
