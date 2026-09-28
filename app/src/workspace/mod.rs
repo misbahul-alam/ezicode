@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use gpui::{
-    AppContext, Context, Entity, FocusHandle, ScrollHandle, ScrollStrategy, SharedString,
+    App, AppContext, Context, Entity, FocusHandle, ScrollHandle, ScrollStrategy, SharedString,
     UniformListScrollHandle, Window,
 };
 use gpui_component::input::{InputEvent, InputState, RopeExt as _, TabSize};
@@ -243,6 +243,8 @@ pub(crate) struct Workspace {
     /// Jump applied once an async `open_file` finishes (search result click
     /// on a file that is not open yet).
     pub(crate) pending_search_jump: Option<(PathBuf, usize, usize)>,
+    pub(crate) pending_restore_tabs: Vec<crate::storage::OpenTabState>,
+    pub(crate) pending_restore_active_tab: Option<usize>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -295,6 +297,20 @@ fn load_buffer_file(path: &std::path::Path) -> Result<LoadedBuffer, String> {
         lang_id,
         highlight,
     })
+}
+
+fn expand_saved_folders(nodes: &mut [TreeNode], expanded: &[PathBuf]) {
+    let set: HashSet<&PathBuf> = expanded.iter().collect();
+    for n in nodes {
+        if n.is_dir && set.contains(&n.path) {
+            n.expanded = true;
+            if !n.children_loaded {
+                n.children = load_dir(&n.path);
+                n.children_loaded = true;
+            }
+            expand_saved_folders(&mut n.children, expanded);
+        }
+    }
 }
 
 impl Workspace {
@@ -458,7 +474,7 @@ impl Workspace {
             .unwrap_or_else(theme::default_index);
         let font_size = settings.editor_font_size;
 
-        Self {
+        let mut workspace = Self {
             root: None,
             tree: Vec::new(),
             explorer_rows: Arc::from(Vec::<VisibleTreeRow>::new()),
@@ -524,7 +540,18 @@ impl Workspace {
             search_collapsed: HashSet::new(),
             search_replace_open: false,
             pending_search_jump: None,
+            pending_restore_tabs: Vec::new(),
+            pending_restore_active_tab: None,
+        };
+
+        let global_state = crate::storage::GlobalState::load();
+        if let Some(root) = global_state.last_workspace_root {
+            if root.is_dir() {
+                workspace.load_root(root, cx);
+            }
         }
+
+        workspace
     }
 
     pub(crate) fn git_change_for(&self, path: &Path) -> Option<(PathBuf, GitChange)> {
@@ -641,6 +668,13 @@ impl Workspace {
     pub(crate) fn load_root(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         let switching_project = self.root.as_ref() != Some(&path);
 
+        if switching_project && self.root.is_some() {
+            self.persist_workspace_state(cx);
+        }
+
+        let mut global_state = crate::storage::GlobalState::load();
+        global_state.add_recent_folder(path.clone());
+
         self.workspace_files_cache = None;
         self.root = Some(path.clone());
         self.root_display = display_name(&path);
@@ -651,6 +685,30 @@ impl Workspace {
         // Opening a different folder must drop the previous project's editors.
         if switching_project {
             self.close_all_project_tabs(cx);
+        }
+
+        let saved_state = crate::storage::WorkspaceState::load(&path);
+        let saved_expanded = saved_state
+            .as_ref()
+            .map(|s| s.expanded_folders.clone())
+            .unwrap_or_default();
+
+        if let Some(saved) = &saved_state {
+            let max_w = 800.0f32;
+            let min_w = 170.0f32;
+            self.sidebar_width = saved.layout.sidebar_width.clamp(min_w, max_w);
+            self.terminal_height = saved.layout.terminal_height.clamp(80.0, 800.0);
+            self.show_sidebar = saved.layout.show_sidebar;
+            self.show_terminal = saved.layout.show_terminal;
+            self.terminal_maximized = saved.layout.terminal_maximized;
+            self.activity = match saved.layout.activity.as_str() {
+                "Search" => Activity::Search,
+                "Git" => Activity::Git,
+                "Extensions" => Activity::Extensions,
+                _ => Activity::Explorer,
+            };
+            self.pending_restore_tabs = saved.tabs.clone();
+            self.pending_restore_active_tab = Some(saved.active_tab);
         }
 
         self.tree.clear();
@@ -673,7 +731,11 @@ impl Workspace {
             let _ = this.update(cx, |workspace, cx| {
                 if workspace.root.as_ref() == Some(&scan_root) {
                     let previous = std::mem::take(&mut workspace.tree);
-                    workspace.tree = merge_loaded_dir(&scan_root, previous, entries);
+                    let mut merged = merge_loaded_dir(&scan_root, previous, entries);
+                    if !saved_expanded.is_empty() {
+                        expand_saved_folders(&mut merged, &saved_expanded);
+                    }
+                    workspace.tree = merged;
                     workspace.rebuild_explorer_rows();
                     workspace.status = format!("Opened folder {}", workspace.root_display);
                     cx.notify();
@@ -1395,6 +1457,11 @@ impl Workspace {
         } else {
             format!("{} (plain text — large file)", display_name(&path))
         };
+
+        let mut global_state = crate::storage::GlobalState::load();
+        global_state.add_recent_file(path.clone());
+        self.persist_workspace_state(cx);
+
         // A search-result click on a closed file queued `pending_search_jump`:
         // it is consumed in `render` (which owns a `&mut Window` for cursor
         // placement) once this tab is the active one.
@@ -1563,6 +1630,7 @@ impl Workspace {
                             workspace.reload_settings(cx);
                         }
                         workspace.status = format!("{done_label} {}", display_name(&path));
+                        workspace.persist_workspace_state(cx);
                     }
                     Err(e) => {
                         workspace.status = format!("save failed: {e}");
@@ -1675,6 +1743,7 @@ impl Workspace {
         }
         let (_, dir_to_load) = rec(&mut self.tree, path);
         self.rebuild_explorer_rows();
+        self.persist_workspace_state(cx);
         cx.notify();
         if let Some(dir) = dir_to_load {
             self.load_directory_async(dir, cx);
@@ -1802,6 +1871,7 @@ impl Workspace {
     pub(crate) fn collapse_all_folders(&mut self, cx: &mut Context<Self>) {
         collapse_all(&mut self.tree);
         self.rebuild_explorer_rows();
+        self.persist_workspace_state(cx);
         self.status = "Collapsed all folders".into();
         cx.notify();
     }
@@ -3222,6 +3292,7 @@ impl Workspace {
             self.tabs.remove(0);
             self.active_tab = 0;
 
+            self.persist_workspace_state(cx);
             window.focus(&self.focus_handle);
             cx.notify();
             return;
@@ -3236,6 +3307,7 @@ impl Workspace {
             self.active_tab = self.tabs.len().saturating_sub(1);
         }
 
+        self.persist_workspace_state(cx);
         self.focus_active_editor_or_self(window, cx);
         cx.notify();
     }
@@ -3248,6 +3320,7 @@ impl Workspace {
             if let Some(tab) = self.tabs.get_mut(index) {
                 tab.preview = false;
             }
+            self.persist_workspace_state(cx);
             cx.notify();
         }
     }
@@ -3276,6 +3349,7 @@ impl Workspace {
                     self.active_tab = self.tabs.len().saturating_sub(1);
                 }
             }
+            self.persist_workspace_state(cx);
             cx.notify();
         }
     }
@@ -3287,6 +3361,7 @@ impl Workspace {
     pub(crate) fn handle_next_tab(&mut self, _: &crate::actions::NextTab, window: &mut Window, cx: &mut Context<Self>) {
         if self.tabs.len() > 1 {
             self.active_tab = (self.active_tab + 1) % self.tabs.len();
+            self.persist_workspace_state(cx);
             self.focus_active_editor_or_self(window, cx);
             cx.notify();
         }
@@ -3295,6 +3370,7 @@ impl Workspace {
     pub(crate) fn handle_prev_tab(&mut self, _: &crate::actions::PrevTab, window: &mut Window, cx: &mut Context<Self>) {
         if self.tabs.len() > 1 {
             self.active_tab = (self.active_tab + self.tabs.len() - 1) % self.tabs.len();
+            self.persist_workspace_state(cx);
             self.focus_active_editor_or_self(window, cx);
             cx.notify();
         }
@@ -3303,6 +3379,7 @@ impl Workspace {
     pub(crate) fn handle_switch_tab(&mut self, action: &crate::actions::SwitchTab, window: &mut Window, cx: &mut Context<Self>) {
         if action.index < self.tabs.len() {
             self.active_tab = action.index;
+            self.persist_workspace_state(cx);
             self.focus_active_editor_or_self(window, cx);
             cx.notify();
         }
@@ -3342,6 +3419,8 @@ impl Workspace {
     }
 
     pub(crate) fn quit(&mut self, cx: &mut Context<Self>) {
+        self.save_all_dirty_quiet(cx);
+        self.persist_workspace_state(cx);
         cx.quit();
     }
 
@@ -3363,11 +3442,23 @@ impl Workspace {
             .as_ref()
             .map(|r| r.as_path())
             .unwrap_or(Path::new("."));
-        let recent_files: Vec<PathBuf> = self
+        let global_state = crate::storage::GlobalState::load();
+        let mut recent_files: Vec<PathBuf> = self
             .tabs
             .iter()
             .filter_map(|t| t.path.clone())
             .collect();
+        for p in global_state.recent_files {
+            if !recent_files.contains(&p) {
+                if let Some(root) = &self.root {
+                    if p.starts_with(root) {
+                        recent_files.push(p);
+                    }
+                } else {
+                    recent_files.push(p);
+                }
+            }
+        }
 
         let items = if let Some((cached_root, cached_items)) = &self.workspace_files_cache {
             if cached_root == root_dir {
@@ -3809,5 +3900,172 @@ impl Workspace {
             self.status = format!("Jumped to line {line}");
             cx.notify();
         }
+    }
+
+    pub(crate) fn restore_tab(
+        &mut self,
+        tab_info: crate::storage::OpenTabState,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let crate::storage::OpenTabState {
+            path,
+            preview,
+            language_override,
+            cursor,
+        } = tab_info;
+        let loaded = match load_buffer_file(&path) {
+            Ok(loaded) => loaded,
+            Err(_) => return,
+        };
+
+        let lang_id: String = if let Some(override_lang) = &language_override {
+            override_lang.clone()
+        } else {
+            loaded.lang_id.to_string()
+        };
+        let text = loaded.text;
+
+        let editor = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .code_editor(lang_id.clone())
+                .line_number(true)
+                .indent_guides(false)
+                .soft_wrap(false)
+                .searchable(true)
+                .tab_size(TabSize {
+                    tab_size: 4,
+                    hard_tabs: false,
+                });
+            state.set_value(text, window, cx);
+            if let Some(pos) = cursor {
+                state.set_cursor_position(
+                    lsp_types::Position {
+                        line: pos.line,
+                        character: pos.character,
+                    },
+                    window,
+                    cx,
+                );
+            }
+            state
+        });
+
+        self.attach_language_server(&path, lang_id.as_str(), &editor, cx);
+
+        let path_clone = path.clone();
+        let lang_str = lang_id.clone();
+        let editor_ent = editor.clone();
+
+        cx.subscribe(&editor, move |this, _state, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::Change) {
+                let mut ui_changed = false;
+                if let Some(tab) = this.tabs.get_mut(this.active_tab) {
+                    if !tab.dirty {
+                        tab.dirty = true;
+                        ui_changed = true;
+                    }
+                    if tab.preview {
+                        tab.preview = false;
+                        ui_changed = true;
+                    }
+                }
+                {
+                    let current_lang = this
+                        .tabs
+                        .iter()
+                        .find(|t| t.path.as_ref() == Some(&path_clone))
+                        .and_then(|t| t.language())
+                        .unwrap_or(lang_str.as_str());
+                    let mut lsp = this.lsp.lock().unwrap();
+                    if lsp.has_client(current_lang) {
+                        let text = editor_ent.read(cx).value().to_string();
+                        lsp.change_document(&path_clone, current_lang, text);
+                    }
+                }
+                if ui_changed {
+                    cx.notify();
+                }
+                let tab_idx = this.active_tab;
+                this.trigger_auto_save_after_delay(tab_idx, cx);
+            }
+        })
+        .detach();
+
+        self.tabs.push(OpenTab {
+            path: Some(path),
+            editor: Some(editor),
+            dirty: false,
+            untitled: false,
+            preview,
+            is_settings: false,
+            diff: None,
+            language_override,
+        });
+    }
+
+    pub(crate) fn collect_expanded_folders(&self) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        fn collect(nodes: &[TreeNode], out: &mut Vec<PathBuf>) {
+            for n in nodes {
+                if n.is_dir && n.expanded {
+                    out.push(n.path.clone());
+                    collect(&n.children, out);
+                }
+            }
+        }
+        collect(&self.tree, &mut out);
+        out
+    }
+
+    pub(crate) fn persist_workspace_state(&self, cx: &App) {
+        let Some(root) = &self.root else {
+            return;
+        };
+
+        let mut tab_states = Vec::new();
+        for tab in &self.tabs {
+            if let Some(path) = &tab.path {
+                let cursor = tab.editor.as_ref().map(|ed| {
+                    let pos = ed.read(cx).cursor_position();
+                    crate::storage::CursorPosition {
+                        line: pos.line,
+                        character: pos.character,
+                    }
+                });
+
+                tab_states.push(crate::storage::OpenTabState {
+                    path: path.clone(),
+                    preview: tab.preview,
+                    language_override: tab.language_override.clone(),
+                    cursor,
+                });
+            }
+        }
+
+        let activity_str = match self.activity {
+            Activity::Explorer => "Explorer",
+            Activity::Search => "Search",
+            Activity::Git => "Git",
+            Activity::Extensions => "Extensions",
+        }
+        .to_string();
+
+        let state = crate::storage::WorkspaceState {
+            root: root.clone(),
+            tabs: tab_states,
+            active_tab: self.active_tab,
+            layout: crate::storage::LayoutState {
+                sidebar_width: self.sidebar_width,
+                terminal_height: self.terminal_height,
+                show_sidebar: self.show_sidebar,
+                show_terminal: self.show_terminal,
+                terminal_maximized: self.terminal_maximized,
+                activity: activity_str,
+            },
+            expanded_folders: self.collect_expanded_folders(),
+        };
+
+        let _ = state.save();
     }
 }
