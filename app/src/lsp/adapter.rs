@@ -4,13 +4,14 @@ use serde_json::{json, Value};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Source {
-
     Npm {
         package: &'static str,
         entry: &'static str,
     },
 
-    Native { binary: &'static str },
+    Native {
+        binary: &'static str,
+    },
 }
 
 /// The static description of one language server.
@@ -38,7 +39,6 @@ impl ServerAdapter {
 
     pub fn extra_npm_packages(&self) -> &'static [&'static str] {
         if self.name == "typescript-language-server" {
-
             &["typescript@6"]
         } else {
             &[]
@@ -47,9 +47,7 @@ impl ServerAdapter {
 
     pub fn initialization_options(&self, root: Option<&Path>) -> Option<Value> {
         match self.name {
-
             "typescript-language-server" => {
-
                 let tsdk = root.and_then(|root| {
                     let local = root.join("node_modules/typescript/lib");
                     local.join("tsserver.js").is_file().then_some(local)
@@ -80,7 +78,6 @@ impl ServerAdapter {
 
     pub fn workspace_configuration(&self, section: &str, root: Option<&Path>) -> Value {
         match self.name {
-
             "typescript-language-server" => json!({
                 "completions": { "completeFunctionCalls": true }
             }),
@@ -197,7 +194,6 @@ impl ServerAdapter {
 /// The Node-based entries mirror the set Zed installs by default for web
 /// development; the native entries mirror Zed's non-Node defaults.
 pub static ADAPTERS: &[ServerAdapter] = &[
-
     ServerAdapter {
         name: "typescript-language-server",
         source: Source::Npm {
@@ -261,7 +257,6 @@ pub static ADAPTERS: &[ServerAdapter] = &[
         args: &["--stdio"],
         languages: &["dockerfile"],
     },
-
     ServerAdapter {
         name: "rust-analyzer",
         source: Source::Native {
@@ -332,7 +327,9 @@ pub static ADAPTERS: &[ServerAdapter] = &[
     },
     ServerAdapter {
         name: "csharp-ls",
-        source: Source::Native { binary: "csharp-ls" },
+        source: Source::Native {
+            binary: "csharp-ls",
+        },
         args: &[],
         languages: &["csharp"],
     },
@@ -366,7 +363,9 @@ pub static ADAPTERS: &[ServerAdapter] = &[
     },
     ServerAdapter {
         name: "graphql-lsp",
-        source: Source::Native { binary: "graphql-lsp" },
+        source: Source::Native {
+            binary: "graphql-lsp",
+        },
         args: &["server", "-m", "stream"],
         languages: &["graphql"],
     },
@@ -407,8 +406,7 @@ mod tests {
             "yaml",
             "bash",
         ] {
-            let a = adapter_for_language(lang)
-                .unwrap_or_else(|| panic!("no adapter for {lang}"));
+            let a = adapter_for_language(lang).unwrap_or_else(|| panic!("no adapter for {lang}"));
             assert!(a.npm_package().is_some(), "{lang} should be node-based");
         }
     }
@@ -424,7 +422,6 @@ mod tests {
 
     #[test]
     fn one_server_serves_the_whole_typescript_family() {
-
         let names: Vec<_> = ["typescript", "javascript", "tsx", "jsx"]
             .iter()
             .map(|l| adapter_for_language(l).unwrap().name)
@@ -434,7 +431,6 @@ mod tests {
 
     #[test]
     fn css_and_html_ship_in_one_npm_package() {
-
         let css = adapter_by_name("vscode-css-language-server").unwrap();
         let html = adapter_by_name("vscode-html-language-server").unwrap();
         assert_eq!(css.npm_package(), Some("vscode-langservers-extracted"));

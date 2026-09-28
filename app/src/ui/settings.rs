@@ -24,9 +24,7 @@ pub(crate) fn render_settings(
         .flex()
         .flex_col()
         .overflow_hidden()
-
         .child(render_header(t, cx))
-
         .child(
             div()
                 .id("settings-scroll")
@@ -42,20 +40,18 @@ pub(crate) fn render_settings(
                         .flex()
                         .flex_col()
                         .gap(px(28.0))
-
                         .child(render_theme_section(t, active_theme_ix, cx))
-
                         .child(render_editor_section(settings, t, font_size, cx))
-
                         .child(render_terminal_section(t, cx))
-
                         .child(render_system_section(t)),
                 ),
         )
 }
 
 fn render_header(t: &Colors, cx: &mut Context<Workspace>) -> impl IntoElement {
-    let settings_path_display = crate::settings::settings_file_path().to_string_lossy().into_owned();
+    let settings_path_display = crate::settings::settings_file_path()
+        .to_string_lossy()
+        .into_owned();
     div()
         .w_full()
         .px(px(32.0))
@@ -96,7 +92,9 @@ fn render_header(t: &Colors, cx: &mut Context<Workspace>) -> impl IntoElement {
                     div()
                         .text_size(px(12.0))
                         .text_color(rgba(t.text_muted))
-                        .child(SharedString::from(format!("Stored in {settings_path_display}"))),
+                        .child(SharedString::from(format!(
+                            "Stored in {settings_path_display}"
+                        ))),
                 ),
         )
         .child(
@@ -112,7 +110,10 @@ fn render_header(t: &Colors, cx: &mut Context<Workspace>) -> impl IntoElement {
                 .border_1()
                 .border_color(rgba(t.border))
                 .cursor_pointer()
-                .hover(|s| s.bg(rgba(t.element_hover)).border_color(rgba(t.border_focused)))
+                .hover(|s| {
+                    s.bg(rgba(t.element_hover))
+                        .border_color(rgba(t.border_focused))
+                })
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.open_settings_json(window, cx);
                 }))
@@ -140,7 +141,9 @@ fn render_theme_section(
 ) -> impl IntoElement {
     let themes = theme::all();
     let current_theme = themes.get(active_theme_ix);
-    let current_name = current_theme.map(|th| th.name.as_str()).unwrap_or("Default");
+    let current_name = current_theme
+        .map(|th| th.name.as_str())
+        .unwrap_or("Default");
     let current_app = current_theme
         .map(|th| th.appearance.as_str())
         .unwrap_or("dark");
@@ -671,44 +674,44 @@ fn render_terminal_section(t: &Colors, cx: &mut Context<Workspace>) -> impl Into
                 .flex()
                 .flex_col()
                 .gap(px(10.0))
-                .child(
-                    setting_row(
-                        "Terminal: Default Shell Profile",
-                        "The shell process launched when spawning new terminal tabs",
-                        div()
-                            .px(px(10.0))
-                            .py(px(4.0))
-                            .rounded(px(4.0))
-                            .bg(rgba(t.element_bg))
-                            .border_1()
-                            .border_color(rgba(t.border))
-                            .text_size(px(12.5))
-                            .text_color(rgba(t.text))
-                            .child(SharedString::from(shell_label)),
-                        t,
-                    ),
-                )
-                .child(
-                    setting_row(
-                        "Terminal: Quick Actions",
-                        "Create new shells or toggle visibility of the bottom terminal panel",
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(8.0))
-                            .child(
-                                btn_small("New Terminal (Ctrl+Shift+`)", t, cx.listener(|this, _, window, cx| {
-                                    this.new_terminal(window, cx);
-                                })),
-                            )
-                            .child(
-                                btn_small("Toggle Panel (Ctrl+J)", t, cx.listener(|this, _, window, cx| {
-                                    this.toggle_terminal(window, cx);
-                                })),
-                            ),
-                        t,
-                    ),
-                ),
+                .child(setting_row(
+                    "Terminal: Default Shell Profile",
+                    "The shell process launched when spawning new terminal tabs",
+                    div()
+                        .px(px(10.0))
+                        .py(px(4.0))
+                        .rounded(px(4.0))
+                        .bg(rgba(t.element_bg))
+                        .border_1()
+                        .border_color(rgba(t.border))
+                        .text_size(px(12.5))
+                        .text_color(rgba(t.text))
+                        .child(SharedString::from(shell_label)),
+                    t,
+                ))
+                .child(setting_row(
+                    "Terminal: Quick Actions",
+                    "Create new shells or toggle visibility of the bottom terminal panel",
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(btn_small(
+                            "New Terminal (Ctrl+Shift+`)",
+                            t,
+                            cx.listener(|this, _, window, cx| {
+                                this.new_terminal(window, cx);
+                            }),
+                        ))
+                        .child(btn_small(
+                            "Toggle Panel (Ctrl+J)",
+                            t,
+                            cx.listener(|this, _, window, cx| {
+                                this.toggle_terminal(window, cx);
+                            }),
+                        )),
+                    t,
+                )),
         )
 }
 
@@ -833,7 +836,10 @@ fn btn_small(
         .bg(rgba(t.element_bg))
         .border_1()
         .border_color(rgba(t.border))
-        .hover(|s| s.bg(rgba(t.element_hover)).border_color(rgba(t.border_focused)))
+        .hover(|s| {
+            s.bg(rgba(t.element_hover))
+                .border_color(rgba(t.border_focused))
+        })
         .cursor_pointer()
         .text_size(px(12.0))
         .text_color(rgba(t.text))
@@ -871,7 +877,10 @@ fn btn_pill(
                 .text_color(rgba(t.text))
                 .border_1()
                 .border_color(rgba(t.border))
-                .hover(|s| s.bg(rgba(t.element_hover)).border_color(rgba(t.border_focused)))
+                .hover(|s| {
+                    s.bg(rgba(t.element_hover))
+                        .border_color(rgba(t.border_focused))
+                })
         })
         .child(SharedString::from(label))
         .on_click(on_click)

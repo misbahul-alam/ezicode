@@ -1,7 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 
 use crate::settings::config_dir;
 
@@ -126,7 +126,13 @@ pub fn workspace_id(root: &Path) -> String {
 
     let clean_name: String = folder_name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
 
     let mut hasher = DefaultHasher::new();
@@ -177,9 +183,8 @@ impl GlobalState {
     /// Adds a folder to the recent folders list (MRU order), deduplicating and limiting size.
     pub fn add_recent_folder(&mut self, folder: PathBuf) {
         let canonical = std::fs::canonicalize(&folder).unwrap_or(folder);
-        self.recent_folders.retain(|p| {
-            std::fs::canonicalize(p).unwrap_or_else(|_| p.clone()) != canonical
-        });
+        self.recent_folders
+            .retain(|p| std::fs::canonicalize(p).unwrap_or_else(|_| p.clone()) != canonical);
         self.recent_folders.insert(0, canonical.clone());
         if self.recent_folders.len() > 30 {
             self.recent_folders.truncate(30);
@@ -192,9 +197,8 @@ impl GlobalState {
     #[allow(dead_code)]
     pub fn remove_recent_folder(&mut self, folder: &Path) {
         let canonical = std::fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
-        self.recent_folders.retain(|p| {
-            std::fs::canonicalize(p).unwrap_or_else(|_| p.clone()) != canonical
-        });
+        self.recent_folders
+            .retain(|p| std::fs::canonicalize(p).unwrap_or_else(|_| p.clone()) != canonical);
         if self
             .last_workspace_root
             .as_ref()
@@ -209,9 +213,8 @@ impl GlobalState {
     /// Adds a file to the recent files list (MRU order), deduplicating and limiting size.
     pub fn add_recent_file(&mut self, file: PathBuf) {
         let canonical = std::fs::canonicalize(&file).unwrap_or(file);
-        self.recent_files.retain(|p| {
-            std::fs::canonicalize(p).unwrap_or_else(|_| p.clone()) != canonical
-        });
+        self.recent_files
+            .retain(|p| std::fs::canonicalize(p).unwrap_or_else(|_| p.clone()) != canonical);
         self.recent_files.insert(0, canonical);
         if self.recent_files.len() > 50 {
             self.recent_files.truncate(50);

@@ -268,41 +268,231 @@ pub const FOLDER_EXPANDED: &str = "file_icons/default_folder_opened.svg";
 
 pub fn folder_icon_for(path: &Path, expanded: bool) -> &'static str {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-        return if expanded { FOLDER_EXPANDED } else { FOLDER_COLLAPSED };
+        return if expanded {
+            FOLDER_EXPANDED
+        } else {
+            FOLDER_COLLAPSED
+        };
     };
     let clean = name.to_lowercase();
     match clean.as_str() {
-        ".github" => if expanded { "file_icons/folder_type_github_opened.svg" } else { "file_icons/folder_type_github.svg" },
-        ".git" | "git" => if expanded { "file_icons/folder_type_git_opened.svg" } else { "file_icons/folder_type_git.svg" },
-        ".vscode" => if expanded { "file_icons/folder_type_vscode_opened.svg" } else { "file_icons/folder_type_vscode.svg" },
-        ".husky" | "husky" => if expanded { "file_icons/folder_type_husky_opened.svg" } else { "file_icons/folder_type_husky.svg" },
-        ".turbo" | "turbo" => if expanded { "file_icons/folder_type_turbo_opened.svg" } else { "file_icons/folder_type_turbo.svg" },
-        "app" | "apps" => if expanded { "file_icons/folder_type_app_opened.svg" } else { "file_icons/folder_type_app.svg" },
-        "docs" | "doc" | "documentation" => if expanded { "file_icons/folder_type_docs_opened.svg" } else { "file_icons/folder_type_docs.svg" },
-        "src" | "source" | "sources" => if expanded { "file_icons/folder_type_src_opened.svg" } else { "file_icons/folder_type_src.svg" },
-        "package" | "packages" => if expanded { "file_icons/folder_type_package_opened.svg" } else { "file_icons/folder_type_package.svg" },
-        "asset" | "assets" => if expanded { "file_icons/folder_type_asset_opened.svg" } else { "file_icons/folder_type_asset.svg" },
-        "image" | "images" | "img" | "icons" => if expanded { "file_icons/folder_type_images_opened.svg" } else { "file_icons/folder_type_images.svg" },
-        "node_modules" => if expanded { "file_icons/folder_type_node_opened.svg" } else { "file_icons/folder_type_node.svg" },
-        "script" | "scripts" => if expanded { "file_icons/folder_type_script_opened.svg" } else { "file_icons/folder_type_script.svg" },
-        "server" => if expanded { "file_icons/folder_type_server_opened.svg" } else { "file_icons/folder_type_server.svg" },
-        "web" | "www" | "public" => if expanded { "file_icons/folder_type_public_opened.svg" } else { "file_icons/folder_type_public.svg" },
-        "test" | "tests" | "test-results" | "__tests__" | "spec" | "specs" => if expanded { "file_icons/folder_type_test_opened.svg" } else { "file_icons/folder_type_test.svg" },
-        "theme" | "themes" | "style" | "styles" => if expanded { "file_icons/folder_type_theme_opened.svg" } else { "file_icons/folder_type_theme.svg" },
-        "component" | "components" | "ui" => if expanded { "file_icons/folder_type_component_opened.svg" } else { "file_icons/folder_type_component.svg" },
-        "api" | "apis" => if expanded { "file_icons/folder_type_api_opened.svg" } else { "file_icons/folder_type_api.svg" },
-        "mobile" => if expanded { "file_icons/folder_type_mobile_opened.svg" } else { "file_icons/folder_type_mobile.svg" },
-        "config" | "configs" | ".config" => if expanded { "file_icons/folder_type_config_opened.svg" } else { "file_icons/folder_type_config.svg" },
-        "tools" | "utils" | "util" | "helpers" | "migration" | "migrations" => if expanded { "file_icons/folder_type_tools_opened.svg" } else { "file_icons/folder_type_tools.svg" },
-        "view" | "views" | "pages" => if expanded { "file_icons/folder_type_view_opened.svg" } else { "file_icons/folder_type_view.svg" },
-        "controller" | "controllers" => if expanded { "file_icons/folder_type_controller_opened.svg" } else { "file_icons/folder_type_controller.svg" },
-        "model" | "models" => if expanded { "file_icons/folder_type_model_opened.svg" } else { "file_icons/folder_type_model.svg" },
-        "middleware" | "middlewares" => if expanded { "file_icons/folder_type_middleware_opened.svg" } else { "file_icons/folder_type_middleware.svg" },
-        "docker" | ".docker" => if expanded { "file_icons/folder_type_docker_opened.svg" } else { "file_icons/folder_type_docker.svg" },
-        "font" | "fonts" => if expanded { "file_icons/folder_type_fonts_opened.svg" } else { "file_icons/folder_type_fonts.svg" },
-        "plugin" | "plugins" => if expanded { "file_icons/folder_type_plugin_opened.svg" } else { "file_icons/folder_type_plugin.svg" },
-        "dist" | "build" | "out" | "target" | ".next" => if expanded { "file_icons/folder_type_dist_opened.svg" } else { "file_icons/folder_type_dist.svg" },
-        _ => if expanded { FOLDER_EXPANDED } else { FOLDER_COLLAPSED },
+        ".github" => {
+            if expanded {
+                "file_icons/folder_type_github_opened.svg"
+            } else {
+                "file_icons/folder_type_github.svg"
+            }
+        }
+        ".git" | "git" => {
+            if expanded {
+                "file_icons/folder_type_git_opened.svg"
+            } else {
+                "file_icons/folder_type_git.svg"
+            }
+        }
+        ".vscode" => {
+            if expanded {
+                "file_icons/folder_type_vscode_opened.svg"
+            } else {
+                "file_icons/folder_type_vscode.svg"
+            }
+        }
+        ".husky" | "husky" => {
+            if expanded {
+                "file_icons/folder_type_husky_opened.svg"
+            } else {
+                "file_icons/folder_type_husky.svg"
+            }
+        }
+        ".turbo" | "turbo" => {
+            if expanded {
+                "file_icons/folder_type_turbo_opened.svg"
+            } else {
+                "file_icons/folder_type_turbo.svg"
+            }
+        }
+        "app" | "apps" => {
+            if expanded {
+                "file_icons/folder_type_app_opened.svg"
+            } else {
+                "file_icons/folder_type_app.svg"
+            }
+        }
+        "docs" | "doc" | "documentation" => {
+            if expanded {
+                "file_icons/folder_type_docs_opened.svg"
+            } else {
+                "file_icons/folder_type_docs.svg"
+            }
+        }
+        "src" | "source" | "sources" => {
+            if expanded {
+                "file_icons/folder_type_src_opened.svg"
+            } else {
+                "file_icons/folder_type_src.svg"
+            }
+        }
+        "package" | "packages" => {
+            if expanded {
+                "file_icons/folder_type_package_opened.svg"
+            } else {
+                "file_icons/folder_type_package.svg"
+            }
+        }
+        "asset" | "assets" => {
+            if expanded {
+                "file_icons/folder_type_asset_opened.svg"
+            } else {
+                "file_icons/folder_type_asset.svg"
+            }
+        }
+        "image" | "images" | "img" | "icons" => {
+            if expanded {
+                "file_icons/folder_type_images_opened.svg"
+            } else {
+                "file_icons/folder_type_images.svg"
+            }
+        }
+        "node_modules" => {
+            if expanded {
+                "file_icons/folder_type_node_opened.svg"
+            } else {
+                "file_icons/folder_type_node.svg"
+            }
+        }
+        "script" | "scripts" => {
+            if expanded {
+                "file_icons/folder_type_script_opened.svg"
+            } else {
+                "file_icons/folder_type_script.svg"
+            }
+        }
+        "server" => {
+            if expanded {
+                "file_icons/folder_type_server_opened.svg"
+            } else {
+                "file_icons/folder_type_server.svg"
+            }
+        }
+        "web" | "www" | "public" => {
+            if expanded {
+                "file_icons/folder_type_public_opened.svg"
+            } else {
+                "file_icons/folder_type_public.svg"
+            }
+        }
+        "test" | "tests" | "test-results" | "__tests__" | "spec" | "specs" => {
+            if expanded {
+                "file_icons/folder_type_test_opened.svg"
+            } else {
+                "file_icons/folder_type_test.svg"
+            }
+        }
+        "theme" | "themes" | "style" | "styles" => {
+            if expanded {
+                "file_icons/folder_type_theme_opened.svg"
+            } else {
+                "file_icons/folder_type_theme.svg"
+            }
+        }
+        "component" | "components" | "ui" => {
+            if expanded {
+                "file_icons/folder_type_component_opened.svg"
+            } else {
+                "file_icons/folder_type_component.svg"
+            }
+        }
+        "api" | "apis" => {
+            if expanded {
+                "file_icons/folder_type_api_opened.svg"
+            } else {
+                "file_icons/folder_type_api.svg"
+            }
+        }
+        "mobile" => {
+            if expanded {
+                "file_icons/folder_type_mobile_opened.svg"
+            } else {
+                "file_icons/folder_type_mobile.svg"
+            }
+        }
+        "config" | "configs" | ".config" => {
+            if expanded {
+                "file_icons/folder_type_config_opened.svg"
+            } else {
+                "file_icons/folder_type_config.svg"
+            }
+        }
+        "tools" | "utils" | "util" | "helpers" | "migration" | "migrations" => {
+            if expanded {
+                "file_icons/folder_type_tools_opened.svg"
+            } else {
+                "file_icons/folder_type_tools.svg"
+            }
+        }
+        "view" | "views" | "pages" => {
+            if expanded {
+                "file_icons/folder_type_view_opened.svg"
+            } else {
+                "file_icons/folder_type_view.svg"
+            }
+        }
+        "controller" | "controllers" => {
+            if expanded {
+                "file_icons/folder_type_controller_opened.svg"
+            } else {
+                "file_icons/folder_type_controller.svg"
+            }
+        }
+        "model" | "models" => {
+            if expanded {
+                "file_icons/folder_type_model_opened.svg"
+            } else {
+                "file_icons/folder_type_model.svg"
+            }
+        }
+        "middleware" | "middlewares" => {
+            if expanded {
+                "file_icons/folder_type_middleware_opened.svg"
+            } else {
+                "file_icons/folder_type_middleware.svg"
+            }
+        }
+        "docker" | ".docker" => {
+            if expanded {
+                "file_icons/folder_type_docker_opened.svg"
+            } else {
+                "file_icons/folder_type_docker.svg"
+            }
+        }
+        "font" | "fonts" => {
+            if expanded {
+                "file_icons/folder_type_fonts_opened.svg"
+            } else {
+                "file_icons/folder_type_fonts.svg"
+            }
+        }
+        "plugin" | "plugins" => {
+            if expanded {
+                "file_icons/folder_type_plugin_opened.svg"
+            } else {
+                "file_icons/folder_type_plugin.svg"
+            }
+        }
+        "dist" | "build" | "out" | "target" | ".next" => {
+            if expanded {
+                "file_icons/folder_type_dist_opened.svg"
+            } else {
+                "file_icons/folder_type_dist.svg"
+            }
+        }
+        _ => {
+            if expanded {
+                FOLDER_EXPANDED
+            } else {
+                FOLDER_COLLAPSED
+            }
+        }
     }
 }
 
@@ -321,7 +511,10 @@ mod tests {
         assert_eq!(icon("App.tsx"), "file_icons/file_type_reactts.svg");
         assert_eq!(icon("style.scss"), "file_icons/file_type_sass.svg");
         assert_eq!(icon("data.sql"), "file_icons/file_type_sql.svg");
-        assert_eq!(icon("styled.d.ts"), "file_icons/file_type_typescriptdef.svg");
+        assert_eq!(
+            icon("styled.d.ts"),
+            "file_icons/file_type_typescriptdef.svg"
+        );
     }
 
     #[test]
@@ -337,13 +530,22 @@ mod tests {
         assert_eq!(icon(".env.local"), "file_icons/file_type_dotenv.svg");
         assert_eq!(icon(".env.example"), "file_icons/file_type_dotenv.svg");
         assert_eq!(icon(".env.test"), "file_icons/file_type_dotenv.svg");
-        assert_eq!(icon(".env.twilio.template"), "file_icons/file_type_dotenv.svg");
+        assert_eq!(
+            icon(".env.twilio.template"),
+            "file_icons/file_type_dotenv.svg"
+        );
     }
 
     #[test]
     fn config_files() {
-        assert_eq!(icon("drizzle.config.ts"), "file_icons/file_type_typescript.svg");
-        assert_eq!(icon("playwright.config.ts"), "file_icons/file_type_typescript.svg");
+        assert_eq!(
+            icon("drizzle.config.ts"),
+            "file_icons/file_type_typescript.svg"
+        );
+        assert_eq!(
+            icon("playwright.config.ts"),
+            "file_icons/file_type_typescript.svg"
+        );
         assert_eq!(icon("commitlint.config.js"), "file_icons/file_type_js.svg");
         assert_eq!(icon("jest.config.js"), "file_icons/file_type_js.svg");
     }
@@ -351,7 +553,10 @@ mod tests {
     #[test]
     fn hidden_files() {
         assert_eq!(icon(".gitignore"), "file_icons/file_type_git.svg");
-        assert_eq!(icon(".editorconfig"), "file_icons/file_type_editorconfig.svg");
+        assert_eq!(
+            icon(".editorconfig"),
+            "file_icons/file_type_editorconfig.svg"
+        );
         assert_eq!(icon(".dockerignore"), "file_icons/file_type_docker.svg");
         assert_eq!(icon(".npmrc"), "file_icons/file_type_npm.svg");
         assert_eq!(icon(".prettierignore"), "file_icons/file_type_prettier.svg");
@@ -360,7 +565,10 @@ mod tests {
     #[test]
     fn multipart_names() {
         assert_eq!(icon("auth.module.js"), "file_icons/file_type_js.svg");
-        assert_eq!(icon("Button.stories.tsx"), "file_icons/file_type_reactts.svg");
+        assert_eq!(
+            icon("Button.stories.tsx"),
+            "file_icons/file_type_reactts.svg"
+        );
         assert_eq!(
             icon("eslint.config.mjs"),
             "file_icons/file_type_eslint.svg",
@@ -377,12 +585,42 @@ mod tests {
     fn all_folder_icons_exist_in_assets() {
         use crate::assets::AppAssets;
         let test_folders = [
-            ".github", ".git", ".vscode", ".husky", ".turbo", "app", "apps",
-            "docs", "src", "package", "assets", "images", "node_modules",
-            "scripts", "server", "web", "public", "tests", "theme", "components",
-            "api", "mobile", "config", "tools", "utils", "migrations",
-            "views", "controllers", "models", "middleware", "docker", "fonts",
-            "plugins", "dist", ".next", "unknown_folder"
+            ".github",
+            ".git",
+            ".vscode",
+            ".husky",
+            ".turbo",
+            "app",
+            "apps",
+            "docs",
+            "src",
+            "package",
+            "assets",
+            "images",
+            "node_modules",
+            "scripts",
+            "server",
+            "web",
+            "public",
+            "tests",
+            "theme",
+            "components",
+            "api",
+            "mobile",
+            "config",
+            "tools",
+            "utils",
+            "migrations",
+            "views",
+            "controllers",
+            "models",
+            "middleware",
+            "docker",
+            "fonts",
+            "plugins",
+            "dist",
+            ".next",
+            "unknown_folder",
         ];
         for f in test_folders {
             let closed = folder_icon_for(Path::new(f), false);

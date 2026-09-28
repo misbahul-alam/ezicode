@@ -38,7 +38,6 @@ actions!(
         GitUnstageAll,
         GitDiscardAll,
         GitCommit,
-
         NextTerminal,
         PrevTerminal,
         CloseTerminal,
@@ -48,7 +47,6 @@ actions!(
         TerminalTab3,
         TerminalTab4,
         TerminalTab5,
-
         ToggleFileFinder,
         ToggleCommandPalette,
         ToggleGoToLine,

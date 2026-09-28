@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use gpui::{
-    div, prelude::*, px, rgba, svg, Context, Edges, Entity, FocusHandle, IntoElement,
-    ScrollHandle, SharedString, Window,
+    div, prelude::*, px, rgba, svg, Context, Edges, Entity, FocusHandle, IntoElement, ScrollHandle,
+    SharedString, Window,
 };
 use gpui_terminal::{TerminalConfig, TerminalView};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
@@ -14,7 +14,6 @@ use crate::workspace::Workspace;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TerminalState {
-
     Running,
 
     Exited(i32),
@@ -64,7 +63,7 @@ impl std::io::Write for SharedWriter {
         let mut guard = self
             .0
             .lock()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "lock poisoned"))?;
+            .map_err(|_| std::io::Error::other("lock poisoned"))?;
         guard.write(buf)
     }
 
@@ -72,7 +71,7 @@ impl std::io::Write for SharedWriter {
         let mut guard = self
             .0
             .lock()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "lock poisoned"))?;
+            .map_err(|_| std::io::Error::other("lock poisoned"))?;
         guard.flush()
     }
 }
@@ -94,7 +93,6 @@ pub fn terminal_keystroke_to_bytes(keystroke: &gpui::Keystroke) -> Option<Vec<u8
 }
 
 impl Terminal {
-
     pub fn new(
         root_dir: Option<&Path>,
         name: String,
@@ -277,12 +275,11 @@ impl Terminal {
         Self::detect_shell().1
     }
 
-    fn create_dummy_pty() -> (Box<dyn std::io::Read + Send>, Box<dyn std::io::Write + Send>) {
-
-        (
-            Box::new(std::io::empty()),
-            Box::new(std::io::sink()),
-        )
+    fn create_dummy_pty() -> (
+        Box<dyn std::io::Read + Send>,
+        Box<dyn std::io::Write + Send>,
+    ) {
+        (Box::new(std::io::empty()), Box::new(std::io::sink()))
     }
 
     /// Returns `true` only when the state *just* changed.
@@ -304,17 +301,17 @@ impl Terminal {
 
     #[cfg(unix)]
     fn process_is_alive(pid: u32) -> bool {
-
-        unsafe {
-            libc::kill(pid as i32, 0) == 0
-        }
+        unsafe { libc::kill(pid as i32, 0) == 0 }
     }
 
     #[cfg(windows)]
     fn process_is_alive(pid: u32) -> bool {
-
         extern "system" {
-            fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> *mut std::ffi::c_void;
+            fn OpenProcess(
+                dwDesiredAccess: u32,
+                bInheritHandle: i32,
+                dwProcessId: u32,
+            ) -> *mut std::ffi::c_void;
             fn GetExitCodeProcess(hProcess: *mut std::ffi::c_void, lpExitCode: *mut u32) -> i32;
             fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
         }
@@ -461,13 +458,7 @@ pub fn render_terminal_panel(
         .flex_col()
         .bg(rgba(TAB_BAR_BG))
         .child(render_terminal_tab_bar(
-            dock,
-            tabs,
-            active,
-            maximized,
-            tab_scroll,
-            t,
-            cx,
+            dock, tabs, active, maximized, tab_scroll, t, cx,
         ))
         .child(
             div()
@@ -596,7 +587,11 @@ fn render_terminal_tab(
     cx: &mut Context<Workspace>,
 ) -> impl IntoElement {
     let tab_bg = if is_active { TAB_ACTIVE_BG } else { TAB_BAR_BG };
-    let text_color = if is_active { TAB_ACTIVE_TEXT } else { TAB_INACTIVE_TEXT };
+    let text_color = if is_active {
+        TAB_ACTIVE_TEXT
+    } else {
+        TAB_INACTIVE_TEXT
+    };
 
     let icon_path = if name.contains("bash") {
         "file_icons/file_type_shell.svg"
@@ -765,7 +760,10 @@ mod tests {
     /// finished terminal schedule a re-render on every single frame.
     #[test]
     fn finished_terminal_is_not_reprobed() {
-        assert_eq!(next_state_after_probe(TerminalState::Exited(0), Some(1)), None);
+        assert_eq!(
+            next_state_after_probe(TerminalState::Exited(0), Some(1)),
+            None
+        );
         assert_eq!(next_state_after_probe(TerminalState::Error, Some(1)), None);
     }
 
@@ -855,13 +853,19 @@ mod tests {
         assert_eq!(terminal_keystroke_to_bytes(&enter), Some(b"\r".to_vec()));
 
         let backspace = Keystroke::parse("backspace").unwrap();
-        assert_eq!(terminal_keystroke_to_bytes(&backspace), Some(b"\x7f".to_vec()));
+        assert_eq!(
+            terminal_keystroke_to_bytes(&backspace),
+            Some(b"\x7f".to_vec())
+        );
 
         let tab = Keystroke::parse("tab").unwrap();
         assert_eq!(terminal_keystroke_to_bytes(&tab), Some(b"\t".to_vec()));
 
         let shift_tab = Keystroke::parse("shift-tab").unwrap();
-        assert_eq!(terminal_keystroke_to_bytes(&shift_tab), Some(b"\x1b[Z".to_vec()));
+        assert_eq!(
+            terminal_keystroke_to_bytes(&shift_tab),
+            Some(b"\x1b[Z".to_vec())
+        );
 
         let up = Keystroke::parse("up").unwrap();
         assert_eq!(terminal_keystroke_to_bytes(&up), Some(b"\x1b[A".to_vec()));

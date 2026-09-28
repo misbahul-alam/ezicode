@@ -21,15 +21,9 @@ const SEARCH_DEBOUNCE: Duration = Duration::from_millis(220);
 impl Workspace {
     /// Lazily create the query / replace / include inputs. Idempotent —
     /// safe to call from render and from every Search entry point.
-    pub(crate) fn ensure_search_inputs(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn ensure_search_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.search_query_input.is_none() {
-            let input = cx.new(|cx| {
-                InputState::new(window, cx).placeholder("Search")
-            });
+            let input = cx.new(|cx| InputState::new(window, cx).placeholder("Search"));
             cx.subscribe(&input, |this, _state, event: &InputEvent, cx| match event {
                 InputEvent::Change => this.schedule_search(cx),
                 InputEvent::PressEnter { .. } => this.run_search_now(cx),
@@ -39,9 +33,7 @@ impl Workspace {
             self.search_query_input = Some(input);
         }
         if self.search_replace_input.is_none() {
-            let input = cx.new(|cx| {
-                InputState::new(window, cx).placeholder("Replace")
-            });
+            let input = cx.new(|cx| InputState::new(window, cx).placeholder("Replace"));
             cx.subscribe(&input, |_this, _state, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
                     cx.notify();
@@ -51,9 +43,7 @@ impl Workspace {
             self.search_replace_input = Some(input);
         }
         if self.search_include_input.is_none() {
-            let input = cx.new(|cx| {
-                InputState::new(window, cx).placeholder("files to include")
-            });
+            let input = cx.new(|cx| InputState::new(window, cx).placeholder("files to include"));
             cx.subscribe(&input, |this, _state, event: &InputEvent, cx| match event {
                 InputEvent::Change => this.schedule_search(cx),
                 InputEvent::PressEnter { .. } => this.run_search_now(cx),
@@ -150,9 +140,11 @@ impl Workspace {
         self.search_error = None;
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let output =
-                cx.background_spawn(async move { search::run_search(&root, &opts, MAX_MATCHES, MAX_FILES) })
-                    .await;
+            let output = cx
+                .background_spawn(async move {
+                    search::run_search(&root, &opts, MAX_MATCHES, MAX_FILES)
+                })
+                .await;
             let _ = this.update(cx, |workspace, cx| {
                 if workspace.search_generation != my_gen {
                     return; // a newer query already superseded this run
@@ -172,7 +164,11 @@ impl Workspace {
                             workspace.status = format!(
                                 "{} {} in {} {}",
                                 out.total_matches,
-                                if out.total_matches == 1 { "result" } else { "results" },
+                                if out.total_matches == 1 {
+                                    "result"
+                                } else {
+                                    "results"
+                                },
                                 workspace.search_results.len(),
                                 if workspace.search_results.len() == 1 {
                                     "file"
@@ -258,7 +254,11 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(idx) = self.tabs.iter().position(|t| t.path.as_ref() == Some(&path)) {
+        if let Some(idx) = self
+            .tabs
+            .iter()
+            .position(|t| t.path.as_ref() == Some(&path))
+        {
             self.pending_search_jump = None;
             self.active_tab = idx;
             if let Some(tab) = self.tabs.get_mut(idx) {
@@ -329,7 +329,11 @@ impl Workspace {
                 } else {
                     format!(
                         "Replaced {made} {} in {changed} {}",
-                        if made == 1 { "occurrence" } else { "occurrences" },
+                        if made == 1 {
+                            "occurrence"
+                        } else {
+                            "occurrences"
+                        },
                         if changed == 1 { "file" } else { "files" }
                     )
                 };
@@ -344,7 +348,12 @@ impl Workspace {
     /// Replace every hit inside one file (the per-file action next to the
     /// file header), then refresh the list.
     pub(crate) fn replace_in_search_file(&mut self, path: &PathBuf, cx: &mut Context<Self>) {
-        let Some(file) = self.search_results.iter().find(|f| &f.path == path).cloned() else {
+        let Some(file) = self
+            .search_results
+            .iter()
+            .find(|f| &f.path == path)
+            .cloned()
+        else {
             return;
         };
         let opts = self.search_snapshot(cx);
@@ -352,7 +361,9 @@ impl Workspace {
         let label = file.rel.clone();
         cx.spawn(async move |this, cx| {
             let (changed, made) = cx
-                .background_spawn(async move { search::apply_replace(std::slice::from_ref(&file), &opts, &replace) })
+                .background_spawn(async move {
+                    search::apply_replace(std::slice::from_ref(&file), &opts, &replace)
+                })
                 .await;
             let _ = this.update(cx, |workspace, cx| {
                 workspace.status = if made == 0 {
@@ -360,7 +371,11 @@ impl Workspace {
                 } else {
                     format!(
                         "Replaced {made} {} in {label}",
-                        if made == 1 { "occurrence" } else { "occurrences" }
+                        if made == 1 {
+                            "occurrence"
+                        } else {
+                            "occurrences"
+                        }
                     )
                 };
                 let _ = changed;

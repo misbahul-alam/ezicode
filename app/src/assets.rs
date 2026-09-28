@@ -38,7 +38,6 @@ impl gpui::AssetSource for CombinedAssets {
 }
 
 /// Register every embedded TTF under `assets/fonts/` with GPUI's text
-
 pub fn load_embedded_fonts(cx: &App) {
     let fonts: Vec<std::borrow::Cow<'static, [u8]>> = AppAssets::iter()
         .filter(|p| p.starts_with("fonts/") && p.ends_with(".ttf"))
@@ -53,7 +52,6 @@ pub fn load_embedded_fonts(cx: &App) {
 }
 
 /// Point the widget library at Zed's fonts (called after every
-
 pub fn sync_component_fonts(cx: &mut App) {
     let theme = gpui_component::Theme::global_mut(cx);
     theme.font_family = SANS_FONT.into();

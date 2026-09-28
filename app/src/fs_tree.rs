@@ -239,7 +239,10 @@ mod tests {
             path_after_move(Path::new("/project/src/main.rs"), source, destination),
             Some(PathBuf::from("/project/lib/main.rs"))
         );
-        assert_eq!(path_after_move(Path::new("/project/src2/main.rs"), source, destination), None);
+        assert_eq!(
+            path_after_move(Path::new("/project/src2/main.rs"), source, destination),
+            None
+        );
     }
 
     #[test]
@@ -260,7 +263,7 @@ mod tests {
             }],
         };
         let mut rows = Vec::new();
-        flatten_visible(&[root.clone()], 0, &mut rows);
+        flatten_visible(std::slice::from_ref(&root), 0, &mut rows);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].depth, 0);
 

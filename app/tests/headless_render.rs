@@ -5,8 +5,8 @@
 //! consumer crate, which is the contract the rest of the test suite builds on.
 
 use gpui::{
-    Context, IntoElement, ParentElement, Pixels, Render, Size, Styled, StyledText,
-    TestAppContext, Window, div, px, rgb, size,
+    div, px, rgb, size, Context, IntoElement, ParentElement, Pixels, Render, Size, Styled,
+    StyledText, TestAppContext, Window,
 };
 use image::RgbaImage;
 use std::cell::Cell;
@@ -42,8 +42,6 @@ where
 /// hold it for as long as they hold the context. Bind it *before* the context:
 /// locals drop in reverse, so the device is then torn down before the lock is
 /// released.
-
-
 fn headless_context() -> ((), TestAppContext) {
     // A previous test may have panicked while holding the lock; that is not a
     // reason to refuse to run this one.
@@ -133,17 +131,14 @@ fn clears_the_frame_when_there_is_nothing_to_draw() {
 #[test]
 fn renders_text_through_the_sprite_atlas() {
     let image = draw_window(size(px(200.0), px(60.0)), || {
-        div()
-            .size_full()
-            .bg(rgb(0x101010))
-            .child(
-                div()
-                    .text_color(rgb(0xffffff))
-                    .text_size(px(18.0))
-                    .mx(px(12.0))
-                    .mt(px(12.0))
-                    .child(StyledText::new("Hello, GPUI")),
-            )
+        div().size_full().bg(rgb(0x101010)).child(
+            div()
+                .text_color(rgb(0xffffff))
+                .text_size(px(18.0))
+                .mx(px(12.0))
+                .mt(px(12.0))
+                .child(StyledText::new("Hello, GPUI")),
+        )
     });
 
     let lit = image
@@ -161,16 +156,13 @@ fn renders_text_through_the_sprite_atlas() {
 #[test]
 fn renders_rounded_borders() {
     let image = draw_window(size(px(64.0), px(64.0)), || {
-        div()
-            .size_full()
-            .bg(rgb(0x202020))
-            .child(
-                div()
-                    .size_full()
-                    .border_1()
-                    .border_color(rgb(0x00ffff))
-                    .rounded_full(),
-            )
+        div().size_full().bg(rgb(0x202020)).child(
+            div()
+                .size_full()
+                .border_1()
+                .border_color(rgb(0x00ffff))
+                .rounded_full(),
+        )
     });
 
     let (width, _) = image.dimensions();
@@ -296,7 +288,10 @@ fn frame_is_encodable() {
 
     let mut bytes = Vec::new();
     image
-        .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
+        .write_to(
+            &mut std::io::Cursor::new(&mut bytes),
+            image::ImageFormat::Png,
+        )
         .expect("the frame should encode as a PNG");
     assert!(bytes.len() > 100, "PNG should not be trivially empty");
 }

@@ -120,21 +120,15 @@ pub(crate) fn render_search_panel(
                         .flex_row()
                         .items_center()
                         .gap(px(4.0))
-                        .child(
-                            div().flex_1().min_w(px(0.0)).child(search_input_row(
-                                "search-replace-input",
-                                replace_input,
-                                "Replace",
-                                t,
-                                window,
-                                cx,
-                            )),
-                        )
-                        .child(replace_all_btn(
-                            workspace.search_total_matches,
+                        .child(div().flex_1().min_w(px(0.0)).child(search_input_row(
+                            "search-replace-input",
+                            replace_input,
+                            "Replace",
                             t,
+                            window,
                             cx,
-                        )),
+                        )))
+                        .child(replace_all_btn(workspace.search_total_matches, t, cx)),
                 )
             })
             .child(search_input_row(
@@ -413,11 +407,7 @@ fn replace_toggle_btn(
         }))
 }
 
-fn replace_all_btn(
-    total: usize,
-    t: &Colors,
-    cx: &mut Context<Workspace>,
-) -> impl IntoElement {
+fn replace_all_btn(total: usize, t: &Colors, cx: &mut Context<Workspace>) -> impl IntoElement {
     let label = if total == 0 {
         "Replace All".to_string()
     } else {
@@ -520,144 +510,144 @@ fn file_group(
         .unwrap_or_else(|| file.rel.clone());
     let parent = rel_path.parent().and_then(|p| {
         let s = p.to_string_lossy().replace('/', "\\");
-        if s.is_empty() { None } else { Some(s) }
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
     });
     let icon_path = file_icons::icon_for(rel_path).to_string();
     let path_toggle = file.path.clone();
     let path_replace = file.path.clone();
     let count = file.matches.len();
 
-    let mut group = div()
-        .w_full()
-        .flex()
-        .flex_col()
-        .child(
-            div()
-                .id((ElementId::from("search-file"), file.rel.clone()))
-                .group("search-file-row")
-                .w_full()
-                .h(px(26.0))
-                .pl(px(6.0))
-                .pr(px(8.0))
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(4.0))
-                .cursor_pointer()
-                .hover(|s| s.bg(rgba(t.ghost_hover)))
-                .child(
-                    div()
-                        .size(px(18.0))
-                        .flex_none()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            svg()
-                                .path(chevron)
-                                .w(px(12.0))
-                                .h(px(12.0))
-                                .text_color(rgba(t.icon_muted)),
-                        ),
-                )
-                .child(
-                    div()
-                        .size(px(18.0))
-                        .flex_none()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            gpui::img(SharedString::from(icon_path))
-                                .w(px(16.0))
-                                .h(px(16.0)),
-                        ),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w(px(0.0))
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(6.0))
-                        .child(
+    let mut group = div().w_full().flex().flex_col().child(
+        div()
+            .id((ElementId::from("search-file"), file.rel.clone()))
+            .group("search-file-row")
+            .w_full()
+            .h(px(26.0))
+            .pl(px(6.0))
+            .pr(px(8.0))
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(4.0))
+            .cursor_pointer()
+            .hover(|s| s.bg(rgba(t.ghost_hover)))
+            .child(
+                div()
+                    .size(px(18.0))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        svg()
+                            .path(chevron)
+                            .w(px(12.0))
+                            .h(px(12.0))
+                            .text_color(rgba(t.icon_muted)),
+                    ),
+            )
+            .child(
+                div()
+                    .size(px(18.0))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        gpui::img(SharedString::from(icon_path))
+                            .w(px(16.0))
+                            .h(px(16.0)),
+                    ),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(px(0.0))
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(6.0))
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(rgba(t.text))
+                            .text_ellipsis()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .child(SharedString::from(name)),
+                    )
+                    .when_some(parent, |d, parent| {
+                        d.child(
                             div()
-                                .text_size(px(13.0))
-                                .font_weight(FontWeight::BOLD)
-                                .text_color(rgba(t.text))
+                                .flex_none()
+                                .text_size(px(11.5))
+                                .text_color(rgba(t.text_muted))
                                 .text_ellipsis()
                                 .overflow_hidden()
                                 .whitespace_nowrap()
-                                .child(SharedString::from(name)),
+                                .child(SharedString::from(parent)),
                         )
-                        .when_some(parent, |d, parent| {
-                            d.child(
-                                div()
-                                    .flex_none()
-                                    .text_size(px(11.5))
-                                    .text_color(rgba(t.text_muted))
-                                    .text_ellipsis()
-                                    .overflow_hidden()
-                                    .whitespace_nowrap()
-                                    .child(SharedString::from(parent)),
+                    }),
+            )
+            .child(
+                div()
+                    .flex_none()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(4.0))
+                    .child(
+                        div()
+                            .min_w(px(20.0))
+                            .h(px(18.0))
+                            .px(px(5.0))
+                            .rounded_full()
+                            .bg(rgba(t.element_active))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .text_size(px(11.0))
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(rgba(t.text))
+                            .child(SharedString::from(count.to_string())),
+                    )
+                    .child(
+                        div()
+                            .id((ElementId::from("search-replace-file"), file.rel.clone()))
+                            .size(px(22.0))
+                            .rounded(px(3.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .invisible()
+                            .group_hover("search-file-row", |s| s.visible())
+                            .hover(|s| s.bg(rgba(t.element_hover)))
+                            .tooltip(|window, cx| {
+                                Tooltip::new("Replace All in this file").build(window, cx)
+                            })
+                            .child(
+                                svg()
+                                    .path("ui_icons/check_tint.svg")
+                                    .w(px(13.0))
+                                    .h(px(13.0))
+                                    .text_color(rgba(t.icon_muted)),
                             )
-                        }),
-                )
-                .child(
-                    div()
-                        .flex_none()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(4.0))
-                        .child(
-                            div()
-                                .min_w(px(20.0))
-                                .h(px(18.0))
-                                .px(px(5.0))
-                                .rounded_full()
-                                .bg(rgba(t.element_active))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .text_size(px(11.0))
-                                .font_weight(FontWeight::BOLD)
-                                .text_color(rgba(t.text))
-                                .child(SharedString::from(count.to_string())),
-                        )
-                        .child(
-                            div()
-                                .id((ElementId::from("search-replace-file"), file.rel.clone()))
-                                .size(px(22.0))
-                                .rounded(px(3.0))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .cursor_pointer()
-                                .invisible()
-                                .group_hover("search-file-row", |s| s.visible())
-                                .hover(|s| s.bg(rgba(t.element_hover)))
-                                .tooltip(|window, cx| {
-                                    Tooltip::new("Replace All in this file").build(window, cx)
-                                })
-                                .child(
-                                    svg()
-                                        .path("ui_icons/check_tint.svg")
-                                        .w(px(13.0))
-                                        .h(px(13.0))
-                                        .text_color(rgba(t.icon_muted)),
-                                )
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.replace_in_search_file(&path_replace, cx);
-                                    cx.stop_propagation();
-                                })),
-                        ),
-                )
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.toggle_search_file_collapsed(&path_toggle, cx);
-                })),
-        );
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.replace_in_search_file(&path_replace, cx);
+                                cx.stop_propagation();
+                            })),
+                    ),
+            )
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.toggle_search_file_collapsed(&path_toggle, cx);
+            })),
+    );
 
     if !collapsed {
         group = group.child(
@@ -684,9 +674,7 @@ fn hit_row(
     div()
         .id(SharedString::from(format!(
             "search-hit-{}-{}-{}",
-            file.rel,
-            m.line_number,
-            m.col_start
+            file.rel, m.line_number, m.col_start
         )))
         .w_full()
         .min_h(px(22.0))

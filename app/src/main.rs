@@ -4,9 +4,9 @@ mod file_icons;
 mod fs_tree;
 mod git;
 mod lang;
-mod lsp;
 #[cfg(target_os = "linux")]
 mod linux_desktop;
+mod lsp;
 mod search;
 mod settings;
 mod storage;
@@ -48,9 +48,16 @@ fn install_panic_logger() {
             chrono_like_timestamp(),
             std::backtrace::Backtrace::force_capture()
         );
-        eprintln!("\n[PANIC] {msg} (at {location}) — see {}", log_path.display());
+        eprintln!(
+            "\n[PANIC] {msg} (at {location}) — see {}",
+            log_path.display()
+        );
         use std::io::Write as _;
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)
+        {
             let _ = f.write_all(entry.as_bytes());
         }
     }));
@@ -91,34 +98,28 @@ fn main() {
                 KeyBinding::new("ctrl-`", ToggleTerminal, None),
                 KeyBinding::new("ctrl-j", ToggleTerminal, None),
                 KeyBinding::new("ctrl-shift-`", NewTerminal, None),
-
                 KeyBinding::new("alt-right", NextTerminal, None),
                 KeyBinding::new("alt-left", PrevTerminal, None),
                 KeyBinding::new("ctrl-shift-w", CloseTerminal, None),
-
                 KeyBinding::new("alt-1", TerminalTab1, None),
                 KeyBinding::new("alt-2", TerminalTab2, None),
                 KeyBinding::new("alt-3", TerminalTab3, None),
                 KeyBinding::new("alt-4", TerminalTab4, None),
                 KeyBinding::new("alt-5", TerminalTab5, None),
-
                 KeyBinding::new("ctrl-shift-k", ClearTerminal, None),
                 KeyBinding::new("ctrl-b", ToggleSidebar, None),
                 KeyBinding::new("ctrl-shift-e", ShowExplorer, None),
                 KeyBinding::new("ctrl-shift-f", ShowSearch, None),
                 KeyBinding::new("ctrl-shift-g", ShowGit, None),
                 KeyBinding::new("ctrl-shift-x", ShowExtensions, None),
-
                 KeyBinding::new("ctrl-p", ToggleFileFinder, None),
                 KeyBinding::new("ctrl-shift-p", ToggleCommandPalette, None),
                 KeyBinding::new("ctrl-g", ToggleGoToLine, None),
                 KeyBinding::new("ctrl-k m", ToggleLanguageSelector, None),
                 KeyBinding::new("escape", CloseModal, None),
-
                 KeyBinding::new("ctrl-w", CloseTab, None),
                 KeyBinding::new("ctrl-tab", NextTab, None),
                 KeyBinding::new("ctrl-shift-tab", PrevTab, None),
-
                 KeyBinding::new("ctrl-=", IncreaseFontSize, None),
                 KeyBinding::new("ctrl-+", IncreaseFontSize, None),
                 KeyBinding::new("ctrl-shift-+", IncreaseFontSize, None),
@@ -127,7 +128,6 @@ fn main() {
                 KeyBinding::new("ctrl-_", DecreaseFontSize, None),
                 KeyBinding::new("ctrl-0", ResetFontSize, None),
                 KeyBinding::new("ctrl-alt-c", CopyDiagnostic, None),
-
                 KeyBinding::new("shift-alt-f", FormatDocument, Some("Workspace")),
             ]);
 

@@ -36,7 +36,6 @@ pub struct Colors {
 }
 
 impl Colors {
-
     pub(crate) const MISSING: u32 = 0xFF00FF;
 
     pub(crate) fn all_missing() -> Self {

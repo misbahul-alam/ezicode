@@ -11,13 +11,19 @@ mod windows_res {
             "assets/logo/olova.ico"
         };
         if !Path::new(ico_path).exists() {
-            eprintln!("warning: {} not found - taskbar icon will be missing", ico_path);
+            eprintln!(
+                "warning: {} not found - taskbar icon will be missing",
+                ico_path
+            );
         } else {
             let mut res = winres::WindowsResource::new();
 
             res.set_icon(ico_path);
             res.set("ProductName", "ezicode");
-            res.set("FileDescription", "ezicode - A native code editor built with GPUI");
+            res.set(
+                "FileDescription",
+                "ezicode - A native code editor built with GPUI",
+            );
             res.set("CompanyName", "ezicode");
             res.set("LegalCopyright", "MIT License");
             if let Err(e) = res.compile() {

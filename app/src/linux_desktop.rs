@@ -220,12 +220,15 @@ fn icons_present(data_home: &Path) -> bool {
 /// cheaper, and a sharper result than one huge Lanczos step. `sizes` must be in
 /// descending order.
 fn resample_ladder(png: &[u8], sizes: &[u32]) -> Option<Vec<(u32, image::RgbaImage)>> {
-    let source = image::load_from_memory_with_format(png, image::ImageFormat::Png).ok()?.to_rgba8();
+    let source = image::load_from_memory_with_format(png, image::ImageFormat::Png)
+        .ok()?
+        .to_rgba8();
 
     let mut ladder = Vec::with_capacity(sizes.len());
     let mut working = source;
     for &size in sizes {
-        working = image::imageops::resize(&working, size, size, image::imageops::FilterType::Lanczos3);
+        working =
+            image::imageops::resize(&working, size, size, image::imageops::FilterType::Lanczos3);
         ladder.push((size, working.clone()));
     }
     Some(ladder)

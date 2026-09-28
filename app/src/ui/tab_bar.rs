@@ -62,9 +62,10 @@ fn render_tab_content(
         "file_icons/default_file.svg"
     };
 
-    let git_change = tab.path.as_ref().and_then(|p| {
-        git_repo.and_then(|r| r.changes.iter().find(|c| &c.path == p))
-    });
+    let git_change = tab
+        .path
+        .as_ref()
+        .and_then(|p| git_repo.and_then(|r| r.changes.iter().find(|c| &c.path == p)));
 
     let (git_letter, git_color) = if let Some(change) = git_change {
         if change.untracked {
@@ -112,23 +113,23 @@ fn render_tab_content(
         .on_click(cx.listener(move |this, _, _window, cx| {
             this.switch_tab_to(index, cx);
         }))
-        .on_mouse_down(MouseButton::Middle, cx.listener(move |this, _, _window, cx| {
-            this.close_tab_at_index(index, cx);
-        }));
+        .on_mouse_down(
+            MouseButton::Middle,
+            cx.listener(move |this, _, _window, cx| {
+                this.close_tab_at_index(index, cx);
+            }),
+        );
 
     if is_active {
-        tab_div = tab_div
-            .bg(rgba(t.tab_active_bg))
-
-            .child(
-                div()
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .right_0()
-                    .h(px(2.0))
-                    .bg(rgba(t.text_accent)),
-            );
+        tab_div = tab_div.bg(rgba(t.tab_active_bg)).child(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .right_0()
+                .h(px(2.0))
+                .bg(rgba(t.text_accent)),
+        );
     } else {
         tab_div = tab_div
             .bg(rgba(t.tab_inactive_bg))
@@ -244,7 +245,6 @@ pub fn render_tab_bar(
             let is_active = idx == active_tab;
             render_tab_content(tab, idx, is_active, git_repo, t, cx)
         }))
-
         .child(
             div()
                 .flex_1()

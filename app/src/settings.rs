@@ -1,29 +1,48 @@
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AutoSaveMode {
-    #[serde(alias = "off", alias = "OFF", alias = "false", alias = "none", alias = "disabled")]
+    #[serde(
+        alias = "off",
+        alias = "OFF",
+        alias = "false",
+        alias = "none",
+        alias = "disabled"
+    )]
+    #[default]
     Off,
-    #[serde(alias = "afterDelay", alias = "after_delay", alias = "on", alias = "ON", alias = "true", alias = "delay", alias = "auto", alias = "enabled")]
+    #[serde(
+        alias = "afterDelay",
+        alias = "after_delay",
+        alias = "on",
+        alias = "ON",
+        alias = "true",
+        alias = "delay",
+        alias = "auto",
+        alias = "enabled"
+    )]
     AfterDelay,
-    #[serde(alias = "onFocusChange", alias = "on_focus_change", alias = "focusChange", alias = "focus")]
+    #[serde(
+        alias = "onFocusChange",
+        alias = "on_focus_change",
+        alias = "focusChange",
+        alias = "focus"
+    )]
     OnFocusChange,
-}
-
-impl Default for AutoSaveMode {
-    fn default() -> Self {
-        AutoSaveMode::Off
-    }
 }
 
 impl AutoSaveMode {
     pub fn description(&self) -> &'static str {
         match self {
             AutoSaveMode::Off => "A dirty file is never automatically saved (Ctrl+S to save).",
-            AutoSaveMode::AfterDelay => "A dirty file is automatically saved after the configured delay.",
-            AutoSaveMode::OnFocusChange => "A dirty file is automatically saved when switching tabs or editor focus.",
+            AutoSaveMode::AfterDelay => {
+                "A dirty file is automatically saved after the configured delay."
+            }
+            AutoSaveMode::OnFocusChange => {
+                "A dirty file is automatically saved when switching tabs or editor focus."
+            }
         }
     }
 }
@@ -31,25 +50,28 @@ impl AutoSaveMode {
 /// Whether saving a file first asks its language server to format the buffer
 /// — Zed's `format_on_save` setting. The manual command is always available
 /// as Shift+Alt+F.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FormatOnSaveMode {
-    #[serde(alias = "off", alias = "OFF", alias = "false", alias = "none", alias = "disabled")]
+    #[serde(
+        alias = "off",
+        alias = "OFF",
+        alias = "false",
+        alias = "none",
+        alias = "disabled"
+    )]
+    #[default]
     Off,
     #[serde(alias = "on", alias = "ON", alias = "true", alias = "enabled")]
     On,
 }
 
-impl Default for FormatOnSaveMode {
-    fn default() -> Self {
-        FormatOnSaveMode::Off
-    }
-}
-
 impl FormatOnSaveMode {
     pub fn description(&self) -> &'static str {
         match self {
-            FormatOnSaveMode::Off => "Saving writes the buffer as-is (Shift+Alt+F formats on demand).",
+            FormatOnSaveMode::Off => {
+                "Saving writes the buffer as-is (Shift+Alt+F formats on demand)."
+            }
             FormatOnSaveMode::On => "Saving asks the language server to format the buffer first.",
         }
     }
@@ -102,7 +124,11 @@ pub struct Settings {
     #[serde(rename = "editor.formatOnSave", default = "default_format_on_save")]
     pub editor_format_on_save: FormatOnSaveMode,
 
-    #[serde(rename = "terminal.integrated.shell", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "terminal.integrated.shell",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub terminal_integrated_shell: Option<String>,
 }
 
@@ -136,8 +162,14 @@ pub fn config_dir() -> PathBuf {
             return ezicode;
         }
         if let Ok(userprofile) = std::env::var("USERPROFILE") {
-            let ezicode = PathBuf::from(&userprofile).join("AppData").join("Roaming").join("ezicode");
-            let legacy = PathBuf::from(&userprofile).join("AppData").join("Roaming").join("html2gpui");
+            let ezicode = PathBuf::from(&userprofile)
+                .join("AppData")
+                .join("Roaming")
+                .join("ezicode");
+            let legacy = PathBuf::from(&userprofile)
+                .join("AppData")
+                .join("Roaming")
+                .join("html2gpui");
             if !ezicode.exists() && legacy.exists() {
                 return legacy;
             }
@@ -149,8 +181,14 @@ pub fn config_dir() -> PathBuf {
     #[cfg(target_os = "macos")]
     {
         if let Ok(home) = std::env::var("HOME") {
-            let ezicode = PathBuf::from(&home).join("Library").join("Application Support").join("ezicode");
-            let legacy = PathBuf::from(&home).join("Library").join("Application Support").join("html2gpui");
+            let ezicode = PathBuf::from(&home)
+                .join("Library")
+                .join("Application Support")
+                .join("ezicode");
+            let legacy = PathBuf::from(&home)
+                .join("Library")
+                .join("Application Support")
+                .join("html2gpui");
             if !ezicode.exists() && legacy.exists() {
                 return legacy;
             }

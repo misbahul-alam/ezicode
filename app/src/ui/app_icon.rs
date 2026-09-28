@@ -7,7 +7,6 @@ use gpui_component::IconName;
 use crate::theme::Colors;
 
 fn logo_path() -> Option<PathBuf> {
-
     let candidates = [
         "assets/logo/ezicode.png",
         "app/assets/logo/ezicode.png",
@@ -27,10 +26,7 @@ fn logo_path() -> Option<PathBuf> {
 
 pub fn render_app_icon(size: f32, t: &Colors) -> AnyElement {
     if let Some(path) = logo_path() {
-        return img(path)
-            .w(px(size))
-            .h(px(size))
-            .into_any_element();
+        return img(path).w(px(size)).h(px(size)).into_any_element();
     }
 
     if crate::assets::AppAssets::get("logo/ezicode.png").is_some() {
@@ -56,11 +52,7 @@ pub fn render_app_icon(size: f32, t: &Colors) -> AnyElement {
 }
 
 #[allow(dead_code)]
-pub fn render_app_icon_with_label(
-    size: f32,
-    title: &str,
-    t: &Colors,
-) -> AnyElement {
+pub fn render_app_icon_with_label(size: f32, title: &str, t: &Colors) -> AnyElement {
     div()
         .flex()
         .flex_row()

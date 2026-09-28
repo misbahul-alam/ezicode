@@ -33,8 +33,8 @@ pub(crate) fn render_status_bar(
     diagnostic_counts: Option<(usize, usize)>,
     lang: Option<&str>,
     lsp: LspIndicator,
-    /// Whether the right-hand terminal dock is open (drives the icon's
-    /// active styling, like Zed's dock toggles in the status bar).
+    // Whether the right-hand terminal dock is open (drives the icon's
+    // active styling, like Zed's dock toggles in the status bar).
     right_terminal_open: bool,
     t: &Colors,
 ) -> impl IntoElement {
@@ -147,7 +147,8 @@ pub(crate) fn render_status_bar(
                             .cursor_pointer()
                             .hover(|s| s.bg(rgba(t.ghost_hover)))
                             .on_click(|_, window, cx| {
-                                window.dispatch_action(Box::new(crate::actions::ToggleGoToLine), cx);
+                                window
+                                    .dispatch_action(Box::new(crate::actions::ToggleGoToLine), cx);
                             })
                             .child(SharedString::from(format!("Ln {line}, Col {col}"))),
                     )
@@ -167,7 +168,10 @@ pub(crate) fn render_status_bar(
                         .cursor_pointer()
                         .hover(|s| s.bg(rgba(t.ghost_hover)))
                         .on_click(|_, window, cx| {
-                            window.dispatch_action(Box::new(crate::actions::ToggleLanguageSelector), cx);
+                            window.dispatch_action(
+                                Box::new(crate::actions::ToggleLanguageSelector),
+                                cx,
+                            );
                         })
                         .child(
                             div()
@@ -198,7 +202,10 @@ pub(crate) fn render_status_bar(
                         .cursor_pointer()
                         .hover(|s| s.bg(rgba(t.ghost_hover)))
                         .on_click(|_, window, cx| {
-                            window.dispatch_action(Box::new(crate::actions::ToggleCommandPalette), cx);
+                            window.dispatch_action(
+                                Box::new(crate::actions::ToggleCommandPalette),
+                                cx,
+                            );
                         })
                         .child(SharedString::from(theme_name.to_string())),
                 )
@@ -240,10 +247,8 @@ pub(crate) fn render_status_bar(
                         .py(px(1.0))
                         .hover(|s| s.bg(rgba(t.ghost_hover)))
                         .on_click(|_, window, cx| {
-                            window.dispatch_action(
-                                Box::new(crate::actions::ToggleTerminalRight),
-                                cx,
-                            );
+                            window
+                                .dispatch_action(Box::new(crate::actions::ToggleTerminalRight), cx);
                         })
                         .child(
                             svg()

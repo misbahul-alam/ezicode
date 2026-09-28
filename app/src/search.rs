@@ -207,7 +207,20 @@ fn regex_escape(literal: &str) -> String {
     for c in literal.chars() {
         if matches!(
             c,
-            '\\' | '.' | '+' | '*' | '?' | '(' | ')' | '|' | '[' | ']' | '{' | '}' | '^' | '$' | '#'
+            '\\' | '.'
+                | '+'
+                | '*'
+                | '?'
+                | '('
+                | ')'
+                | '|'
+                | '['
+                | ']'
+                | '{'
+                | '}'
+                | '^'
+                | '$'
+                | '#'
         ) {
             out.push('\\');
         }
@@ -246,7 +259,7 @@ pub fn run_search(
             .git_exclude(true)
             .require_git(false)
             .filter_entry(move |e: &DirEntry| {
-                if e.file_type().map_or(false, |ft| ft.is_dir()) {
+                if e.file_type().is_some_and(|ft| ft.is_dir()) {
                     let name = e.file_name().to_string_lossy();
                     if is_skipped_dir(&name) {
                         return false;
@@ -263,7 +276,7 @@ pub fn run_search(
                 let Ok(entry) = entry else {
                     return WalkState::Continue;
                 };
-                if !entry.file_type().map_or(false, |ft| ft.is_file()) {
+                if !entry.file_type().is_some_and(|ft| ft.is_file()) {
                     return WalkState::Continue;
                 }
                 let path = entry.path().to_path_buf();
@@ -530,7 +543,11 @@ fn is_word_char(c: char) -> bool {
 }
 
 fn is_word_hit(text: &str, s: usize, e: usize) -> bool {
-    let before = text[..s].chars().next_back().map(is_word_char).unwrap_or(false);
+    let before = text[..s]
+        .chars()
+        .next_back()
+        .map(is_word_char)
+        .unwrap_or(false);
     let after = text[e..].chars().next().map(is_word_char).unwrap_or(false);
     !before && !after
 }
