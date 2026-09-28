@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use gpui::{
-    AppContext, Context, Entity, FocusHandle, ScrollHandle, ScrollStrategy, SharedString,
+    App, AppContext, Context, Entity, FocusHandle, ScrollHandle, ScrollStrategy, SharedString,
     UniformListScrollHandle, Window,
 };
 use gpui_component::input::{InputEvent, InputState, RopeExt as _, TabSize};
@@ -474,7 +474,7 @@ impl Workspace {
             .unwrap_or_else(theme::default_index);
         let font_size = settings.editor_font_size;
 
-        Self {
+        let mut workspace = Self {
             root: None,
             tree: Vec::new(),
             explorer_rows: Arc::from(Vec::<VisibleTreeRow>::new()),
@@ -3908,23 +3908,27 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let path = tab_info.path;
+        let crate::storage::OpenTabState {
+            path,
+            preview,
+            language_override,
+            cursor,
+        } = tab_info;
         let loaded = match load_buffer_file(&path) {
             Ok(loaded) => loaded,
             Err(_) => return,
         };
 
-        let lang_id = if let Some(override_lang) = &tab_info.language_override {
-            override_lang.as_str()
+        let lang_id: String = if let Some(override_lang) = &language_override {
+            override_lang.clone()
         } else {
-            loaded.lang_id
+            loaded.lang_id.to_string()
         };
         let text = loaded.text;
-        let cursor = tab_info.cursor;
 
         let editor = cx.new(|cx| {
             let mut state = InputState::new(window, cx)
-                .code_editor(lang_id)
+                .code_editor(lang_id.clone())
                 .line_number(true)
                 .indent_guides(false)
                 .soft_wrap(false)
@@ -3947,10 +3951,10 @@ impl Workspace {
             state
         });
 
-        self.attach_language_server(&path, lang_id, &editor, cx);
+        self.attach_language_server(&path, lang_id.as_str(), &editor, cx);
 
         let path_clone = path.clone();
-        let lang_str = lang_id.to_string();
+        let lang_str = lang_id.clone();
         let editor_ent = editor.clone();
 
         cx.subscribe(&editor, move |this, _state, event: &InputEvent, cx| {
@@ -3993,10 +3997,10 @@ impl Workspace {
             editor: Some(editor),
             dirty: false,
             untitled: false,
-            preview: tab_info.preview,
+            preview,
             is_settings: false,
             diff: None,
-            language_override: tab_info.language_override,
+            language_override,
         });
     }
 
@@ -4014,7 +4018,7 @@ impl Workspace {
         out
     }
 
-    pub(crate) fn persist_workspace_state(&self, cx: &AppContext) {
+    pub(crate) fn persist_workspace_state(&self, cx: &App) {
         let Some(root) = &self.root else {
             return;
         };

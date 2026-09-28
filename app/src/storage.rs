@@ -179,6 +179,7 @@ impl GlobalState {
     }
 
     /// Removes a folder from recent folders list.
+    #[allow(dead_code)]
     pub fn remove_recent_folder(&mut self, folder: &Path) {
         let canonical = std::fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
         self.recent_folders.retain(|p| {
@@ -228,6 +229,7 @@ impl WorkspaceState {
     }
 
     /// Deletes stored state for a workspace root.
+    #[allow(dead_code)]
     pub fn delete(root: &Path) -> Result<(), std::io::Error> {
         let dir = workspace_storage_dir(root);
         if dir.exists() {
