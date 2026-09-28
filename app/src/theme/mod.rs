@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 
 use self::colors::{parse_hex, FALLBACKS, KEY_MAP};
 
-const THEME_FILES: &[&str] = &["themes/github.json", "themes/ayu.json", "themes/gruvbox.json"];
+const THEME_FILES: &[&str] = &["themes/github.json"];
 
 #[derive(Clone, Debug)]
 pub struct Theme {
@@ -394,23 +394,22 @@ mod tests {
     #[test]
     fn loads_all_themes() {
         let themes = all();
-        // 9 GitHub + 3 Ayu + 6 Gruvbox embedded families. Not an exact
+        // 9 GitHub themes in the single embedded family. Not an exact
         // equality: a machine with files in `user_themes_dir()` legitimately
         // has more, and override-by-name can replace embedded ones.
         assert!(
-            themes.len() >= 18,
-            "expected at least the 18 embedded themes, got {}",
+            themes.len() >= 9,
+            "expected at least the 9 embedded themes, got {}",
             themes.len()
         );
         assert!(themes.iter().any(|t| t.name == "GitHub Dark"));
-        assert!(themes.iter().any(|t| t.name == "Ayu Mirage"));
-        assert!(themes.iter().any(|t| t.name == "Gruvbox Light"));
+        assert!(themes.iter().any(|t| t.name == "GitHub Light"));
         assert_eq!(all()[default_index()].name, "GitHub Dark");
     }
 
     #[test]
     fn single_theme_file_is_wrapped_into_a_family() {
-        let json = r#"{
+        let json = r##"{
             "name": "Test Single",
             "appearance": "light",
             "style": {
@@ -419,7 +418,7 @@ mod tests {
                 "editor.foreground": "#111111ff",
                 "syntax": { "comment": { "color": "#888888ff" } }
             }
-        }"#;
+        }"##;
         let mut out = Vec::new();
         parse_theme_file(json, &mut out);
         assert_eq!(out.len(), 1);
@@ -449,7 +448,7 @@ mod tests {
         // Same name as an embedded theme: must replace it, not duplicate it.
         std::fs::write(
             dir.join("override.json"),
-            r#"{
+            r##"{
                 "name": "GitHub Dark",
                 "appearance": "dark",
                 "style": {
@@ -457,17 +456,17 @@ mod tests {
                     "editor.background": "#050505ff",
                     "editor.foreground": "#eeeeeeff"
                 }
-            }"#,
+            }"##,
         )
         .unwrap();
         // A new name: must be appended.
         std::fs::write(
             dir.join("extra.json"),
-            r#"{
+            r##"{
                 "name": "My Custom Theme",
                 "appearance": "dark",
                 "style": { "background": "#101010ff", "editor.background": "#101010ff" }
-            }"#,
+            }"##,
         )
         .unwrap();
 

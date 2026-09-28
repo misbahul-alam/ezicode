@@ -663,8 +663,8 @@ the steps above it. Status reflects this repository.
 
 ### Phase B — Theme delivery & switching ✅ (in this repo)
 
-7. **Embed default families** (`app/assets/themes/*.json` via rust-embed +
-   a name list) — GitHub (9), Ayu (3), Gruvbox (6).
+7. **Embed default family** (`app/assets/themes/github.json` via rust-embed)
+   — GitHub (9 themes, default GitHub Dark).
 8. **Load user themes** from `~/.config/ezicode/themes/*.json`:
    sorted scan, both file layouts, override-by-name, silent skip on malformed
    input (`parse_theme_file`, `load_user_themes_from`).

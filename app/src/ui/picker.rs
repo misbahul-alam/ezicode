@@ -470,8 +470,8 @@ pub fn command_palette_items() -> Vec<PickerItem> {
             score: 0,
         },
         PickerItem {
-            id: "theme.ayu_dark".into(),
-            title: "Color Theme: Ayu Dark".into(),
+            id: "theme.github_light".into(),
+            title: "Color Theme: GitHub Light".into(),
             subtitle: Some("Preferences".into()),
             icon: None,
             shortcut: None,
@@ -479,8 +479,8 @@ pub fn command_palette_items() -> Vec<PickerItem> {
             score: 0,
         },
         PickerItem {
-            id: "theme.ayu_mirage".into(),
-            title: "Color Theme: Ayu Mirage".into(),
+            id: "theme.github_dark_dimmed".into(),
+            title: "Color Theme: GitHub Dark Dimmed".into(),
             subtitle: Some("Preferences".into()),
             icon: None,
             shortcut: None,
@@ -488,8 +488,8 @@ pub fn command_palette_items() -> Vec<PickerItem> {
             score: 0,
         },
         PickerItem {
-            id: "theme.ayu_light".into(),
-            title: "Color Theme: Ayu Light".into(),
+            id: "theme.github_dark_high_contrast".into(),
+            title: "Color Theme: GitHub Dark High Contrast".into(),
             subtitle: Some("Preferences".into()),
             icon: None,
             shortcut: None,
@@ -497,8 +497,8 @@ pub fn command_palette_items() -> Vec<PickerItem> {
             score: 0,
         },
         PickerItem {
-            id: "theme.gruvbox_dark".into(),
-            title: "Color Theme: Gruvbox Dark".into(),
+            id: "theme.github_light_high_contrast".into(),
+            title: "Color Theme: GitHub Light High Contrast".into(),
             subtitle: Some("Preferences".into()),
             icon: None,
             shortcut: None,

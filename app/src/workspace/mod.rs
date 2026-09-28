@@ -3722,10 +3722,14 @@ impl Workspace {
             "view.extensions" => self.set_activity_explicit(Activity::Extensions, window, cx),
             "preferences.settings" => self.open_settings(cx),
             "theme.github_dark" => self.apply_theme_by_name("GitHub Dark", window, cx),
-            "theme.ayu_dark" => self.apply_theme_by_name("Ayu Dark", window, cx),
-            "theme.ayu_mirage" => self.apply_theme_by_name("Ayu Mirage", window, cx),
-            "theme.ayu_light" => self.apply_theme_by_name("Ayu Light", window, cx),
-            "theme.gruvbox_dark" => self.apply_theme_by_name("Gruvbox Dark", window, cx),
+            "theme.github_light" => self.apply_theme_by_name("GitHub Light", window, cx),
+            "theme.github_dark_dimmed" => self.apply_theme_by_name("GitHub Dark Dimmed", window, cx),
+            "theme.github_dark_high_contrast" => {
+                self.apply_theme_by_name("GitHub Dark High Contrast", window, cx)
+            }
+            "theme.github_light_high_contrast" => {
+                self.apply_theme_by_name("GitHub Light High Contrast", window, cx)
+            }
             "editor.format" => self.format_document(window, cx),
             "editor.font_increase" => self.increase_font_size(cx),
             "editor.font_decrease" => self.decrease_font_size(cx),
