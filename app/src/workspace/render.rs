@@ -159,12 +159,33 @@ impl Render for Workspace {
         let split_diff = self.split_diff;
         let git_commit_input = self.git_commit_input.clone();
 
-        let lang_label = open.as_ref().and_then(|p| lang::language_for(p));
+        let active_tab_obj = self.tabs.get(active_tab);
+        let lang_id = active_tab_obj.and_then(|t| t.language());
+
+        let cursor_pos = self.active_editor().map(|ed| {
+            let pos = ed.read(cx).cursor_position();
+            (pos.line + 1, pos.character + 1)
+        });
+
+        let diagnostic_counts = open.as_ref().and_then(|path| {
+            self.diagnostics_by_path.get(path).map(|diags| {
+                let errors = diags
+                    .iter()
+                    .filter(|d| d.severity == Some(lsp_types::DiagnosticSeverity::ERROR))
+                    .count();
+                let warnings = diags
+                    .iter()
+                    .filter(|d| d.severity == Some(lsp_types::DiagnosticSeverity::WARNING))
+                    .count();
+                (errors, warnings)
+            })
+        });
+
         let lsp_indicator = {
             let lsp = self.lsp.lock().unwrap();
             ui::status_bar::LspIndicator {
-                server: lang_label.and_then(|l| lsp.server_name_for_language(l)),
-                state: lang_label.and_then(|l| lsp.status_for_language(l)),
+                server: lang_id.and_then(|l| lsp.server_name_for_language(l)),
+                state: lang_id.and_then(|l| lsp.status_for_language(l)),
             }
         };
 
@@ -353,6 +374,9 @@ impl Render for Workspace {
             }))
             .on_action(cx.listener(|this, _: &ToggleGoToLine, window, cx| {
                 this.toggle_goto_line(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &ToggleLanguageSelector, window, cx| {
+                this.toggle_language_selector(window, cx);
             }))
             .on_action(cx.listener(|this, _: &CloseModal, window, cx| {
                 this.close_modal(window, cx);
@@ -545,7 +569,9 @@ impl Render for Workspace {
                 theme_name,
                 git_branch.as_deref(),
                 git_changes,
-                lang_label,
+                cursor_pos,
+                diagnostic_counts,
+                lang_id,
                 lsp_indicator,
                 &t,
             ))

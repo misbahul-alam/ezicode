@@ -52,8 +52,12 @@ fn render_tab_content(
         "file_icons/file_type_json.svg"
     } else if tab.diff.is_some() {
         "file_icons/file_type_git.svg"
+    } else if let Some(override_lang) = &tab.language_override {
+        crate::lang::language_icon(override_lang)
     } else if let Some(p) = &tab.path {
         file_icons::icon_for(p)
+    } else if let Some(lang) = tab.language() {
+        crate::lang::language_icon(lang)
     } else {
         "file_icons/default_file.svg"
     };

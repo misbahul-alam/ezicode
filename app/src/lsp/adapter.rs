@@ -177,6 +177,12 @@ impl ServerAdapter {
                 "php" => "php",
                 "ruby" => "ruby",
                 "java" => "java",
+                "kotlin" => "kotlin",
+                "swift" => "swift",
+                "scala" => "scala",
+                "sql" => "sql",
+                "graphql" => "graphql",
+                "elixir" => "elixir",
                 "lua" => "lua",
                 "zig" => "zig",
                 "dockerfile" => "dockerfile",
@@ -317,6 +323,60 @@ pub static ADAPTERS: &[ServerAdapter] = &[
         source: Source::Native { binary: "ruby-lsp" },
         args: &[],
         languages: &["ruby"],
+    },
+    ServerAdapter {
+        name: "marksman",
+        source: Source::Native { binary: "marksman" },
+        args: &["server"],
+        languages: &["markdown"],
+    },
+    ServerAdapter {
+        name: "csharp-ls",
+        source: Source::Native { binary: "csharp-ls" },
+        args: &[],
+        languages: &["csharp"],
+    },
+    ServerAdapter {
+        name: "jdtls",
+        source: Source::Native { binary: "jdtls" },
+        args: &[],
+        languages: &["java"],
+    },
+    ServerAdapter {
+        name: "kotlin-language-server",
+        source: Source::Native {
+            binary: "kotlin-language-server",
+        },
+        args: &[],
+        languages: &["kotlin"],
+    },
+    ServerAdapter {
+        name: "sourcekit-lsp",
+        source: Source::Native {
+            binary: "sourcekit-lsp",
+        },
+        args: &[],
+        languages: &["swift"],
+    },
+    ServerAdapter {
+        name: "sqlls",
+        source: Source::Native { binary: "sqlls" },
+        args: &["up", "--method", "stdio"],
+        languages: &["sql"],
+    },
+    ServerAdapter {
+        name: "graphql-lsp",
+        source: Source::Native { binary: "graphql-lsp" },
+        args: &["server", "-m", "stream"],
+        languages: &["graphql"],
+    },
+    ServerAdapter {
+        name: "elixir-ls",
+        source: Source::Native {
+            binary: "language_server.sh",
+        },
+        args: &[],
+        languages: &["elixir"],
     },
 ];
 

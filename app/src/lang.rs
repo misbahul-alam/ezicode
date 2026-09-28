@@ -1,5 +1,266 @@
 use std::path::Path;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LanguageInfo {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub extensions: &'static [&'static str],
+    pub lsp_server: Option<&'static str>,
+    pub icon: &'static str,
+}
+
+pub static LANGUAGES: &[LanguageInfo] = &[
+    LanguageInfo {
+        id: "javascript",
+        name: "JavaScript",
+        extensions: &["js", "mjs", "cjs"],
+        lsp_server: Some("typescript-language-server"),
+        icon: "file_icons/file_type_js.svg",
+    },
+    LanguageInfo {
+        id: "typescript",
+        name: "TypeScript",
+        extensions: &["ts", "mts", "cts"],
+        lsp_server: Some("typescript-language-server"),
+        icon: "file_icons/file_type_typescript.svg",
+    },
+    LanguageInfo {
+        id: "tsx",
+        name: "TypeScript React (TSX)",
+        extensions: &["tsx"],
+        lsp_server: Some("typescript-language-server"),
+        icon: "file_icons/file_type_reactts.svg",
+    },
+    LanguageInfo {
+        id: "jsx",
+        name: "JavaScript React (JSX)",
+        extensions: &["jsx"],
+        lsp_server: Some("typescript-language-server"),
+        icon: "file_icons/file_type_reactjs.svg",
+    },
+    LanguageInfo {
+        id: "python",
+        name: "Python",
+        extensions: &["py", "pyw"],
+        lsp_server: Some("basedpyright-langserver"),
+        icon: "file_icons/file_type_python.svg",
+    },
+    LanguageInfo {
+        id: "rust",
+        name: "Rust",
+        extensions: &["rs"],
+        lsp_server: Some("rust-analyzer"),
+        icon: "file_icons/file_type_rust.svg",
+    },
+    LanguageInfo {
+        id: "go",
+        name: "Go",
+        extensions: &["go"],
+        lsp_server: Some("gopls"),
+        icon: "file_icons/file_type_go.svg",
+    },
+    LanguageInfo {
+        id: "c",
+        name: "C",
+        extensions: &["c", "h"],
+        lsp_server: Some("clangd"),
+        icon: "file_icons/file_type_c.svg",
+    },
+    LanguageInfo {
+        id: "cpp",
+        name: "C++",
+        extensions: &["cpp", "cc", "cxx", "hpp", "hh", "hxx", "inl"],
+        lsp_server: Some("clangd"),
+        icon: "file_icons/file_type_cpp.svg",
+    },
+    LanguageInfo {
+        id: "csharp",
+        name: "C#",
+        extensions: &["cs"],
+        lsp_server: Some("csharp-ls"),
+        icon: "file_icons/file_type_csharp.svg",
+    },
+    LanguageInfo {
+        id: "html",
+        name: "HTML",
+        extensions: &["html", "htm", "xhtml", "vue", "svelte", "astro"],
+        lsp_server: Some("vscode-html-language-server"),
+        icon: "file_icons/file_type_html.svg",
+    },
+    LanguageInfo {
+        id: "css",
+        name: "CSS",
+        extensions: &["css", "scss", "sass", "less"],
+        lsp_server: Some("vscode-css-language-server"),
+        icon: "file_icons/file_type_css.svg",
+    },
+    LanguageInfo {
+        id: "json",
+        name: "JSON",
+        extensions: &["json", "jsonc", "json5"],
+        lsp_server: Some("json-language-server"),
+        icon: "file_icons/file_type_json.svg",
+    },
+    LanguageInfo {
+        id: "yaml",
+        name: "YAML",
+        extensions: &["yaml", "yml"],
+        lsp_server: Some("yaml-language-server"),
+        icon: "file_icons/file_type_yaml.svg",
+    },
+    LanguageInfo {
+        id: "toml",
+        name: "TOML",
+        extensions: &["toml"],
+        lsp_server: Some("taplo"),
+        icon: "file_icons/file_type_toml.svg",
+    },
+    LanguageInfo {
+        id: "bash",
+        name: "Shell Script (Bash)",
+        extensions: &["sh", "bash", "zsh", "ps1", "psm1"],
+        lsp_server: Some("bash-language-server"),
+        icon: "file_icons/file_type_shell.svg",
+    },
+    LanguageInfo {
+        id: "markdown",
+        name: "Markdown",
+        extensions: &["md", "markdown", "mdown"],
+        lsp_server: Some("marksman"),
+        icon: "file_icons/file_type_markdown.svg",
+    },
+    LanguageInfo {
+        id: "dockerfile",
+        name: "Dockerfile",
+        extensions: &["dockerfile"],
+        lsp_server: Some("docker-langserver"),
+        icon: "file_icons/file_type_docker.svg",
+    },
+    LanguageInfo {
+        id: "zig",
+        name: "Zig",
+        extensions: &["zig"],
+        lsp_server: Some("zls"),
+        icon: "file_icons/file_type_zig.svg",
+    },
+    LanguageInfo {
+        id: "lua",
+        name: "Lua",
+        extensions: &["lua", "luau"],
+        lsp_server: Some("lua-language-server"),
+        icon: "file_icons/file_type_lua.svg",
+    },
+    LanguageInfo {
+        id: "php",
+        name: "PHP",
+        extensions: &["php"],
+        lsp_server: Some("intelephense"),
+        icon: "file_icons/file_type_php.svg",
+    },
+    LanguageInfo {
+        id: "ruby",
+        name: "Ruby",
+        extensions: &["rb", "erb"],
+        lsp_server: Some("ruby-lsp"),
+        icon: "file_icons/file_type_ruby.svg",
+    },
+    LanguageInfo {
+        id: "java",
+        name: "Java",
+        extensions: &["java", "jar", "class", "jsp"],
+        lsp_server: Some("jdtls"),
+        icon: "file_icons/file_type_java.svg",
+    },
+    LanguageInfo {
+        id: "kotlin",
+        name: "Kotlin",
+        extensions: &["kt", "kts"],
+        lsp_server: Some("kotlin-language-server"),
+        icon: "file_icons/file_type_kotlin.svg",
+    },
+    LanguageInfo {
+        id: "swift",
+        name: "Swift",
+        extensions: &["swift"],
+        lsp_server: Some("sourcekit-lsp"),
+        icon: "file_icons/file_type_swift.svg",
+    },
+    LanguageInfo {
+        id: "scala",
+        name: "Scala",
+        extensions: &["scala", "sc"],
+        lsp_server: None,
+        icon: "file_icons/file_type_scala.svg",
+    },
+    LanguageInfo {
+        id: "sql",
+        name: "SQL",
+        extensions: &["sql"],
+        lsp_server: Some("sqlls"),
+        icon: "file_icons/file_type_sql.svg",
+    },
+    LanguageInfo {
+        id: "graphql",
+        name: "GraphQL",
+        extensions: &["graphql", "gql"],
+        lsp_server: Some("graphql-lsp"),
+        icon: "file_icons/file_type_graphql.svg",
+    },
+    LanguageInfo {
+        id: "elixir",
+        name: "Elixir",
+        extensions: &["ex", "exs"],
+        lsp_server: Some("elixir-ls"),
+        icon: "file_icons/file_type_elixir.svg",
+    },
+    LanguageInfo {
+        id: "diff",
+        name: "Diff",
+        extensions: &["diff", "patch"],
+        lsp_server: None,
+        icon: "file_icons/file_type_git.svg",
+    },
+    LanguageInfo {
+        id: "cmake",
+        name: "CMake",
+        extensions: &["cmake"],
+        lsp_server: None,
+        icon: "file_icons/file_type_config.svg",
+    },
+    LanguageInfo {
+        id: "make",
+        name: "Makefile",
+        extensions: &["mk", "mak"],
+        lsp_server: None,
+        icon: "file_icons/file_type_config.svg",
+    },
+    LanguageInfo {
+        id: "text",
+        name: "Plain Text",
+        extensions: &["txt", "text", "log"],
+        lsp_server: None,
+        icon: "file_icons/file_type_text.svg",
+    },
+];
+
+pub fn all_languages() -> &'static [LanguageInfo] {
+    LANGUAGES
+}
+
+pub fn language_info(id: &str) -> Option<&'static LanguageInfo> {
+    LANGUAGES.iter().find(|l| l.id.eq_ignore_ascii_case(id))
+}
+
+pub fn language_name(id: &str) -> &'static str {
+    language_info(id).map(|l| l.name).unwrap_or(id)
+}
+
+pub fn language_icon(id: &str) -> &'static str {
+    language_info(id)
+        .map(|l| l.icon)
+        .unwrap_or("file_icons/file_type_text.svg")
+}
+
 pub fn language_for(path: &Path) -> Option<&'static str> {
     let ext_raw = path
         .extension()
@@ -32,47 +293,18 @@ pub fn language_for(path: &Path) -> Option<&'static str> {
 }
 
 fn by_extension(ext: &str) -> Option<&'static str> {
+    for lang in LANGUAGES {
+        if lang.extensions.iter().any(|&e| e.eq_ignore_ascii_case(ext)) {
+            return Some(lang.id);
+        }
+    }
+
+    // Secondary fallback for rarer extensions
     Some(match ext {
-        "rs" => "rust",
-        "js" | "mjs" | "cjs" => "javascript",
-        // Kept distinct from plain JS: the server needs the
-        // "javascriptreact" language id to parse JSX syntax.
-        "jsx" => "jsx",
-        "ts" | "mts" | "cts" => "typescript",
-        "tsx" => "tsx",
-        "py" | "pyw" => "python",
-        "html" | "htm" | "xhtml" => "html",
-        "css" => "css",
-        "scss" | "sass" => "css",
-        "json" => "json",
-        "jsonc" => "json",
-        "toml" => "toml",
-        "yaml" | "yml" => "yaml",
-        "md" | "markdown" | "mdown" => "markdown",
-        "go" => "go",
-        "c" | "h" => "c",
-        "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" | "inl" => "cpp",
-        "cs" => "csharp",
-        "java" => "java",
-        "rb" => "ruby",
-        "sh" | "bash" | "zsh" => "bash",
-        "php" => "php",
-        "swift" => "swift",
-        "kt" | "kts" => "kotlin",
-        "scala" | "sc" => "scala",
-        "lua" => "lua",
-        "zig" => "zig",
-        "sql" => "sql",
         "r" => "r",
         "xml" | "xsl" | "xsd" | "svg" => "xml",
         "proto" => "proto",
-        "graphql" | "gql" => "graphql",
-        "ex" | "exs" => "elixir",
         "ejs" => "ejs",
-        "erb" => "erb",
-        "diff" | "patch" => "diff",
-        "cmake" => "cmake",
-        "vue" | "svelte" | "astro" => "html",
         "tex" => "latex",
         "dart" => "dart",
         "hs" => "haskell",
@@ -80,7 +312,6 @@ fn by_extension(ext: &str) -> Option<&'static str> {
         "fs" | "fsx" => "fsharp",
         "erl" => "erlang",
         "clj" | "cljs" => "clojure",
-        "ps1" | "psm1" => "powershell",
         _ => return None,
     })
 }
@@ -126,9 +357,11 @@ fn shebang_language(path: &Path) -> Option<&'static str> {
     }
 }
 
-#[allow(dead_code)]
 pub fn lsp_server_for(lang: &str) -> Option<&'static str> {
-    crate::lsp::adapter::adapter_for_language(lang).map(|a| a.name)
+    if let Some(adapter) = crate::lsp::adapter::adapter_for_language(lang) {
+        return Some(adapter.name);
+    }
+    language_info(lang).and_then(|l| l.lsp_server)
 }
 
 const TSX_HIGHLIGHT_QUERY: &str = r#"
@@ -221,7 +454,7 @@ const TSX_HIGHLIGHT_QUERY: &str = r#"
 (optional_parameter (identifier) @variable)
 "#;
 
-/// Initializes and registers high-quality Tree-Sitter language definitions for TSX/TypeScript/JSX.
+/// Initializes and registers high-quality Tree-Sitter language definitions for TSX/TypeScript/JSX and aliases.
 pub fn init_languages() {
     use gpui_component::highlighter::{LanguageConfig, LanguageRegistry};
     let registry = LanguageRegistry::singleton();
@@ -282,6 +515,19 @@ mod tests {
         assert_eq!(lsp_server_for("html"), Some("vscode-html-language-server"));
         assert_eq!(lsp_server_for("json"), Some("json-language-server"));
         assert_eq!(lsp_server_for("rust"), Some("rust-analyzer"));
+        assert_eq!(lsp_server_for("python"), Some("basedpyright-langserver"));
+        assert_eq!(lsp_server_for("go"), Some("gopls"));
         assert_eq!(lsp_server_for("plaintext"), None);
+    }
+
+    #[test]
+    fn test_language_names_and_metadata() {
+        assert_eq!(language_name("rust"), "Rust");
+        assert_eq!(language_name("javascript"), "JavaScript");
+        assert_eq!(language_name("python"), "Python");
+        assert_eq!(language_name("go"), "Go");
+        assert_eq!(language_name("typescript"), "TypeScript");
+
+        assert!(all_languages().len() >= 25);
     }
 }

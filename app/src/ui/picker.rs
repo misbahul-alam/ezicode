@@ -16,6 +16,7 @@ pub enum PickerKind {
     FileFinder,
     CommandPalette,
     GoToLine,
+    LanguageSelector,
 }
 
 #[derive(Clone, Debug)]
@@ -249,8 +250,41 @@ pub fn scan_workspace_files(root: &Path, recent_files: &[PathBuf]) -> Vec<Picker
     items
 }
 
+pub fn language_selector_items(current_lang: Option<&str>) -> Vec<PickerItem> {
+    crate::lang::all_languages()
+        .iter()
+        .map(|lang| {
+            let is_current = current_lang.is_some_and(|c| c.eq_ignore_ascii_case(lang.id));
+            let subtitle = if let Some(server) = lang.lsp_server {
+                format!("Language Server: {server}")
+            } else {
+                "Built-in Syntax Highlighting".to_string()
+            };
+            PickerItem {
+                id: lang.id.to_string(),
+                title: lang.name.to_string(),
+                subtitle: Some(subtitle),
+                icon: Some(lang.icon.to_string()),
+                shortcut: if is_current { Some("Current") } else { None },
+                is_recent: is_current,
+                score: 0,
+            }
+        })
+        .collect()
+}
+
 pub fn command_palette_items() -> Vec<PickerItem> {
     vec![
+        // Language Mode
+        PickerItem {
+            id: "language.change_mode".into(),
+            title: "Change Language Mode".into(),
+            subtitle: Some("Language / LSP / Syntax".into()),
+            icon: Some("ui_icons/file-code.svg".into()),
+            shortcut: Some("Ctrl+K M"),
+            is_recent: false,
+            score: 0,
+        },
         // File
         PickerItem {
             id: "file.new".into(),
@@ -764,6 +798,11 @@ pub fn render_picker(
                         }),
                 );
             } else if let Some(sc) = shortcut {
+                let badge_color = if kind == PickerKind::LanguageSelector && item.is_recent {
+                    rgba(t.vc_added)
+                } else {
+                    rgba(t.text_muted)
+                };
                 row = row.child(
                     div()
                         .px(px(6.0))
@@ -773,7 +812,7 @@ pub fn render_picker(
                         .border_1()
                         .border_color(rgba(t.border))
                         .text_size(px(12.0))
-                        .text_color(rgba(t.text_muted))
+                        .text_color(badge_color)
                         .font_family(crate::assets::MONO_FONT)
                         .child(sc),
                 );
@@ -925,5 +964,19 @@ mod tests {
             assert!(!f.id.contains(".git"), "Should not contain .git files: {}", f.id);
             assert!(!f.id.contains("target"), "Should not contain target files: {}", f.id);
         }
+    }
+
+    #[test]
+    fn test_language_selector_items() {
+        let items = language_selector_items(Some("rust"));
+        assert!(!items.is_empty());
+        let rust = items.iter().find(|i| i.id == "rust").expect("rust item");
+        assert_eq!(rust.title, "Rust");
+        assert!(rust.is_recent);
+        assert_eq!(rust.shortcut, Some("Current"));
+
+        let py = items.iter().find(|i| i.id == "python").expect("python item");
+        assert_eq!(py.title, "Python");
+        assert!(!py.is_recent);
     }
 }

@@ -150,7 +150,13 @@ impl LspManager {
 
         match adapter.source {
             super::adapter::Source::Native { binary } => {
-                let Some(program) = find_binary_on_path(binary) else {
+                let fallbacks: &[&str] = match binary {
+                    "basedpyright-langserver" => &["pyright-langserver", "pyright", "pylsp", "ruff"],
+                    "csharp-ls" => &["OmniSharp", "omnisharp"],
+                    "language_server.sh" => &["elixir-ls"],
+                    _ => &[],
+                };
+                let Some(program) = find_binary_with_fallbacks(binary, fallbacks) else {
                     self.statuses.insert(
                         name.to_string(),
                         ServerStatus::Failed(format!("{binary} is not installed or not on PATH")),
@@ -1539,6 +1545,18 @@ pub fn find_binary_on_path(binary: &str) -> Option<PathBuf> {
             })
         })
     })
+}
+
+pub fn find_binary_with_fallbacks(binary: &str, fallbacks: &[&str]) -> Option<PathBuf> {
+    if let Some(p) = find_binary_on_path(binary) {
+        return Some(p);
+    }
+    for fb in fallbacks {
+        if let Some(p) = find_binary_on_path(fb) {
+            return Some(p);
+        }
+    }
+    None
 }
 
 fn read_message<R: BufRead>(reader: &mut R) -> std::io::Result<Option<Value>> {
