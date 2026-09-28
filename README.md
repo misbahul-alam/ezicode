@@ -39,6 +39,7 @@ _Combining the raw speed and hardware-accelerated rendering of Zed with the frie
 - **Alacritty + PTY Engine**: Hardware-accelerated terminal emulation with full 24-bit RGB truecolor.
 - **Rich TUI Support**: Seamlessly run interactive console apps like `vim`, `nano`, `htop`, `lazygit`, and AI agents.
 - **Multi-Tab Sessions**: Launch and switch between multiple shell instances with process lifecycle tracking (running, exited, error status dots).
+- **Zed-Style Right Dock**: A second terminal panel that slides in from the right edge—toggled by the panel icon in the status bar's bottom-right corner, drag-resizable via its left edge, and running completely independent PTY sessions that never share state with the bottom panel.
 - **Auto-Detected Shells**: Automatically finds Git Bash, PowerShell, or `pwsh` on Windows, and `zsh`, `fish`, or `bash` on Unix systems.
 - **Zed-Style Navigation**: Dedicated shortcuts for splitting, cycling, quick-switching (`Alt+1..5`), and maximizing terminal views.
 - **Real Scrollback & Auto-Scroll**: 100 000 lines of configurable history, viewport pinned to the newest output, jump-to-bottom on keypress, and drag-past-the-edge auto-scrolling while selecting.

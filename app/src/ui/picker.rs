@@ -387,6 +387,15 @@ pub fn command_palette_items() -> Vec<PickerItem> {
             score: 0,
         },
         PickerItem {
+            id: "terminal.toggle_right".into(),
+            title: "Toggle Right Terminal Panel".into(),
+            subtitle: Some("Terminal".into()),
+            icon: Some("ui_icons/terminal_panel_right.svg".into()),
+            shortcut: None,
+            is_recent: false,
+            score: 0,
+        },
+        PickerItem {
             id: "terminal.close".into(),
             title: "Close Active Terminal".into(),
             subtitle: Some("Terminal".into()),

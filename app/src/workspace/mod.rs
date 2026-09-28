@@ -128,6 +128,12 @@ pub(crate) struct ExplorerClipboard {
 /// `kill(2)` cost stays negligible no matter how many tabs are open.
 const TERMINAL_EXIT_POLL_INTERVAL: Duration = Duration::from_millis(500);
 
+/// Default width of the right terminal dock, and the smallest width the
+/// tab bar stays usable at. Dragging narrower than the minimum hides the
+/// dock, mirroring how the bottom panel behaves when dragged flat.
+pub(crate) const TERMINAL_RIGHT_DEFAULT_WIDTH: f32 = 420.0;
+pub(crate) const TERMINAL_RIGHT_MIN_WIDTH: f32 = 120.0;
+
 pub(crate) struct Workspace {
     /// None until the user opens a folder (VS Code-style start state).
     pub(crate) root: Option<PathBuf>,
@@ -180,6 +186,21 @@ pub(crate) struct Workspace {
     pub(crate) last_terminal_poll: std::time::Instant,
     /// Monotonic counter for labeling new terminals (PowerShell 1, PowerShell 2, ...).
     pub(crate) next_terminal_id: usize,
+    // ---- Right-dock terminal panel (Zed-style) ----
+    // A second, fully independent terminal surface: its own tab list and its
+    // own PTY sessions. Nothing here is shared with `terminal_tabs` above —
+    // closing, hiding or resizing one dock never affects the other.
+    pub(crate) show_terminal_right: bool,
+    /// Current width of the right terminal dock in px (drag-resizable).
+    pub(crate) terminal_right_width: f32,
+    /// Terminals living in the right dock. Each entry owns a private PTY.
+    pub(crate) terminal_right_tabs: Vec<Entity<crate::terminal::Terminal>>,
+    /// Index of the active right-dock terminal tab.
+    pub(crate) active_terminal_right: usize,
+    /// Horizontal scroll position of the right dock's tab strip.
+    pub(crate) terminal_right_tab_scroll: ScrollHandle,
+    /// Monotonic counter for right-dock terminals.
+    pub(crate) next_terminal_right_id: usize,
     /// File system change notification sender: the changed path, so reloads
     /// can be scoped to the affected directory instead of rescanning the
     /// whole tree on every event.
@@ -251,6 +272,8 @@ pub(crate) struct Workspace {
 pub(crate) enum ResizeKind {
     Sidebar,
     Terminal,
+    /// The vertical handle on the left edge of the right terminal dock.
+    TerminalRight,
 }
 
 #[derive(Clone, Copy)]
@@ -508,6 +531,12 @@ impl Workspace {
             terminal_tab_scroll: ScrollHandle::new(),
             last_terminal_poll: std::time::Instant::now(),
             next_terminal_id: 1,
+            show_terminal_right: false,
+            terminal_right_width: TERMINAL_RIGHT_DEFAULT_WIDTH,
+            terminal_right_tabs: Vec::new(),
+            active_terminal_right: 0,
+            terminal_right_tab_scroll: ScrollHandle::new(),
+            next_terminal_right_id: 1,
             fs_event_tx,
             _watcher: None,
             tabs: Vec::new(),
@@ -648,7 +677,11 @@ impl Workspace {
         crate::assets::sync_component_fonts(cx);
 
         let palette = &th.terminal_palette;
-        for tab in &self.terminal_tabs {
+        for tab in self
+            .terminal_tabs
+            .iter()
+            .chain(self.terminal_right_tabs.iter())
+        {
             tab.update(cx, |term, cx| {
                 term.set_theme(palette, cx);
             });
@@ -701,6 +734,16 @@ impl Workspace {
             self.show_sidebar = saved.layout.show_sidebar;
             self.show_terminal = saved.layout.show_terminal;
             self.terminal_maximized = saved.layout.terminal_maximized;
+            self.terminal_right_width = saved
+                .layout
+                .terminal_right_width
+                .clamp(TERMINAL_RIGHT_MIN_WIDTH, 800.0);
+            // PTY sessions die with the process, so after a restart the right
+            // dock always starts closed — one click on the status-bar icon
+            // spawns a fresh shell. Mid-session folder switches keep live
+            // terminals, and there the saved visibility is honored.
+            self.show_terminal_right =
+                saved.layout.show_terminal_right && !self.terminal_right_tabs.is_empty();
             self.activity = match saved.layout.activity.as_str() {
                 "Search" => Activity::Search,
                 "Git" => Activity::Git,
@@ -1160,6 +1203,147 @@ impl Workspace {
         }
     }
 
+    // ------------------------------------------------------------------
+    // Right-dock terminal panel (Zed-style): a second terminal surface
+    // docked to the right edge, with its own PTY sessions. Nothing is
+    // shared with the bottom panel above.
+    // ------------------------------------------------------------------
+
+    /// Toggle the right terminal dock. Opening it spawns a fresh PTY when
+    /// the dock is still empty (PTYs cannot be restored across restarts).
+    pub(crate) fn toggle_terminal_right(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.show_terminal_right {
+            self.hide_terminal_right(window, cx);
+            return;
+        }
+
+        self.show_terminal_right = true;
+
+        if self.terminal_right_tabs.is_empty() {
+            self.new_terminal_right(window, cx);
+            return;
+        }
+        self.focus_active_terminal_right(window, cx);
+        self.status = "Right terminal panel active".into();
+        cx.notify();
+    }
+
+    /// Spawn a new PTY session inside the right dock.
+    ///
+    /// Deliberately independent of the bottom dock: no shared tabs, no
+    /// inherited working directory, and `Terminal::new` always opens a
+    /// private PTY pair, so the two panels can never talk to the same shell.
+    pub(crate) fn new_terminal_right(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Always start from the project root. The bottom dock inherits the
+        // active terminal's cwd; doing the same here would couple this dock
+        // to a session it is designed to know nothing about.
+        let working_dir = self.root.clone();
+
+        let _id = self.next_terminal_right_id;
+        self.next_terminal_right_id += 1;
+
+        let shell_name = crate::terminal::Terminal::detect_shell_name();
+        let folder = working_dir
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .and_then(|s| s.to_str())
+            .unwrap_or("app");
+        let label = format!("{folder} \u{2013} {shell_name}");
+        let palette = self.theme().terminal_palette.clone();
+        let term = cx.new(|cx| {
+            crate::terminal::Terminal::new(working_dir.as_deref(), label, palette, window, cx)
+        });
+        self.watch_terminal_title(&term, cx);
+        self.terminal_right_tabs.push(term);
+        self.active_terminal_right = self.terminal_right_tabs.len() - 1;
+        self.show_terminal_right = true;
+        self.reveal_active_terminal_right_tab();
+        self.focus_active_terminal_right(window, cx);
+        self.status = format!(
+            "Right terminal {} created",
+            self.active_terminal_right + 1
+        );
+        cx.notify();
+    }
+
+    /// Scroll the right dock's tab strip so the active tab is visible.
+    fn reveal_active_terminal_right_tab(&mut self) {
+        if !self.terminal_right_tabs.is_empty() {
+            self.terminal_right_tab_scroll.scroll_to_item(self.active_terminal_right);
+        }
+    }
+
+    pub(crate) fn activate_terminal_right(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if index >= self.terminal_right_tabs.len() {
+            return;
+        }
+        self.active_terminal_right = index;
+        if let Some(term) = self.terminal_right_tabs.get(index).cloned() {
+            term.read(cx).focus_handle(cx).focus(window);
+        }
+        self.reveal_active_terminal_right_tab();
+        self.status = format!("Right terminal {} active", index + 1);
+        cx.notify();
+    }
+
+    fn focus_active_terminal_right(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(term) = self
+            .terminal_right_tabs
+            .get(self.active_terminal_right)
+            .cloned()
+        {
+            term.read(cx).focus_handle(cx).focus(window);
+        }
+    }
+
+    pub(crate) fn hide_terminal_right(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_terminal_right = false;
+        self.status = "Right terminal panel hidden".into();
+        self.focus_active_editor_or_self(window, cx);
+        cx.notify();
+    }
+
+    pub(crate) fn close_terminal_right(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if index >= self.terminal_right_tabs.len() {
+            return;
+        }
+
+        self.terminal_right_tabs.remove(index);
+
+        if self.terminal_right_tabs.is_empty() {
+            self.active_terminal_right = 0;
+            self.show_terminal_right = false;
+            self.status = "Right terminal panel closed".into();
+            self.focus_active_editor_or_self(window, cx);
+            cx.notify();
+            return;
+        }
+
+        if self.active_terminal_right >= self.terminal_right_tabs.len() {
+            self.active_terminal_right = self.terminal_right_tabs.len() - 1;
+        } else if index < self.active_terminal_right {
+            self.active_terminal_right -= 1;
+        }
+        self.reveal_active_terminal_right_tab();
+        self.focus_active_terminal_right(window, cx);
+        self.status = format!(
+            "Right terminal {} closed — {} terminal(s) remain",
+            index + 1,
+            self.terminal_right_tabs.len()
+        );
+        cx.notify();
+    }
+
     /// Probe each terminal's child process for exit.
     ///
     /// Called from `render`, so it is throttled: the probe is a syscall per
@@ -1172,18 +1356,25 @@ impl Workspace {
         }
         self.last_terminal_poll = now;
 
-        // Nothing to probe: skip the entity updates entirely so an empty or
-        // fully-exited terminal list costs nothing per frame.
-        if !self
+        // Both docks are polled in one pass: the right dock's terminals are
+        // independent sessions, but they exit exactly like the bottom ones.
+        let mut terminals = self
             .terminal_tabs
             .iter()
-            .any(|term| term.read(cx).state == crate::terminal::TerminalState::Running)
-        {
+            .chain(self.terminal_right_tabs.iter());
+
+        // Nothing to probe: skip the entity updates entirely so an empty or
+        // fully-exited terminal list costs nothing per frame.
+        if !terminals.any(|term| term.read(cx).state == crate::terminal::TerminalState::Running) {
             return;
         }
 
         let mut any_changed = false;
-        for term_entity in &self.terminal_tabs {
+        for term_entity in self
+            .terminal_tabs
+            .iter()
+            .chain(self.terminal_right_tabs.iter())
+        {
             let changed = term_entity.update(cx, |term, _cx| term.check_process_exit());
             if changed {
                 any_changed = true;
@@ -3801,6 +3992,7 @@ impl Workspace {
             "tab.prev" => self.handle_prev_tab(&crate::actions::PrevTab, window, cx),
             "terminal.toggle" => self.toggle_terminal(window, cx),
             "terminal.new" => self.new_terminal(window, cx),
+            "terminal.toggle_right" => self.toggle_terminal_right(window, cx),
             "terminal.close" => self.close_active_terminal(window, cx),
             "terminal.clear" => self.clear_active_terminal(cx),
             "sidebar.toggle" => {
@@ -4058,8 +4250,10 @@ impl Workspace {
             layout: crate::storage::LayoutState {
                 sidebar_width: self.sidebar_width,
                 terminal_height: self.terminal_height,
+                terminal_right_width: self.terminal_right_width,
                 show_sidebar: self.show_sidebar,
                 show_terminal: self.show_terminal,
+                show_terminal_right: self.show_terminal_right,
                 terminal_maximized: self.terminal_maximized,
                 activity: activity_str,
             },

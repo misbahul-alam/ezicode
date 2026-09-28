@@ -410,7 +410,39 @@ const TAB_CLOSE_HOVER: u32 = 0x30363dff;
 const TAB_MIN_WIDTH: f32 = 84.0;
 const TAB_MAX_WIDTH: f32 = 180.0;
 
+/// Which dock a terminal panel is rendered in.
+///
+/// The two docks are completely independent: separate tab lists, separate
+/// child processes, separate PTYs. Every button in the panel is routed by
+/// this enum so the right dock never touches the bottom dock's sessions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TerminalDock {
+    /// The classic bottom panel (VS Code style).
+    Bottom,
+    /// The Zed-style panel docked to the right edge of the workspace.
+    Right,
+}
+
+impl TerminalDock {
+    /// Element ids in this module are namespaced by dock. GPUI keys element
+    /// state (scroll offsets, ...) by the *path* of element ids, and the two
+    /// panels' paths are otherwise identical (their ancestors carry no ids),
+    /// which would make the bottom and right tab strips share scroll state.
+    fn namespaced(self, id: &'static str) -> SharedString {
+        match self {
+            TerminalDock::Bottom => SharedString::new_static(id),
+            TerminalDock::Right => SharedString::from(format!("right-{id}")),
+        }
+    }
+
+    /// Indexed variant of [`TerminalDock::namespaced`] for per-tab ids.
+    fn namespaced_index(self, id: &'static str, index: usize) -> gpui::ElementId {
+        gpui::ElementId::named_usize(self.namespaced(id), index)
+    }
+}
+
 pub fn render_terminal_panel(
+    dock: TerminalDock,
     tabs: &[Entity<Terminal>],
     active: usize,
     maximized: bool,
@@ -429,6 +461,7 @@ pub fn render_terminal_panel(
         .flex_col()
         .bg(rgba(TAB_BAR_BG))
         .child(render_terminal_tab_bar(
+            dock,
             tabs,
             active,
             maximized,
@@ -448,6 +481,7 @@ pub fn render_terminal_panel(
 }
 
 fn render_terminal_tab_bar(
+    dock: TerminalDock,
     tabs: &[Entity<Terminal>],
     active: usize,
     maximized: bool,
@@ -456,7 +490,7 @@ fn render_terminal_tab_bar(
     cx: &mut Context<Workspace>,
 ) -> impl IntoElement {
     let tabs_root = div()
-        .id("terminal-tab-bar")
+        .id(dock.namespaced("terminal-tab-bar"))
         .h(px(28.0))
         .w_full()
         .flex()
@@ -473,7 +507,7 @@ fn render_terminal_tab_bar(
     // scrollbar itself is zero-width, and the active tab is scrolled into view
     // whenever the selection changes.
     let tab_strip = div()
-        .id("terminal-tab-strip")
+        .id(dock.namespaced("terminal-tab-strip"))
         .flex_1()
         .min_w(px(0.0))
         .h_full()
@@ -493,24 +527,28 @@ fn render_terminal_tab_bar(
             // to every terminal, re-rendering all of them on every PTY write.
             let label = term.tab_label();
             let state = term.state;
-            render_terminal_tab(label, state, idx, is_active, t, cx)
+            render_terminal_tab(dock, label, state, idx, is_active, t, cx)
         }));
 
+    // The separator + maximize button only make sense for the bottom panel;
+    // the right dock has no "maximized" state (it is resized by dragging).
     tabs_root
         .child(tab_strip)
-        .child(render_new_terminal_button(t, cx))
-        .child(
-            div()
-                .h_full()
-                .flex_shrink_0()
-                .flex()
-                .items_center()
-                .border_b_1()
-                .border_color(rgba(TAB_BAR_BORDER_BOTTOM))
-                .child(div().w(px(1.0)).h(px(14.0)).bg(rgba(0x383e47ff))),
-        )
-        .child(render_maximize_terminal_button(maximized, t, cx))
-        .child(render_hide_panel_button(t, cx))
+        .child(render_new_terminal_button(dock, t, cx))
+        .when(dock == TerminalDock::Bottom, |bar| {
+            bar.child(
+                div()
+                    .h_full()
+                    .flex_shrink_0()
+                    .flex()
+                    .items_center()
+                    .border_b_1()
+                    .border_color(rgba(TAB_BAR_BORDER_BOTTOM))
+                    .child(div().w(px(1.0)).h(px(14.0)).bg(rgba(0x383e47ff))),
+            )
+            .child(render_maximize_terminal_button(maximized, t, cx))
+        })
+        .child(render_hide_panel_button(dock, t, cx))
 }
 
 fn render_maximize_terminal_button(
@@ -549,6 +587,7 @@ fn render_maximize_terminal_button(
 }
 
 fn render_terminal_tab(
+    dock: TerminalDock,
     name: SharedString,
     state: TerminalState,
     index: usize,
@@ -572,7 +611,7 @@ fn render_terminal_tab(
     };
 
     let mut tab = div()
-        .id(("terminal-tab", index))
+        .id(dock.namespaced_index("terminal-tab", index))
         .flex_1()
         .min_w(px(TAB_MIN_WIDTH))
         .max_w(px(TAB_MAX_WIDTH))
@@ -586,8 +625,9 @@ fn render_terminal_tab(
         .overflow_hidden()
         .bg(rgba(tab_bg))
         .cursor_pointer()
-        .on_click(cx.listener(move |this, _, window, cx| {
-            this.activate_terminal(index, window, cx);
+        .on_click(cx.listener(move |this, _, window, cx| match dock {
+            TerminalDock::Bottom => this.activate_terminal(index, window, cx),
+            TerminalDock::Right => this.activate_terminal_right(index, window, cx),
         }));
 
     if is_active {
@@ -628,7 +668,7 @@ fn render_terminal_tab(
     if is_active {
         tab = tab.child(
             div()
-                .id(("terminal-tab-close", index))
+                .id(dock.namespaced_index("terminal-tab-close", index))
                 .w(px(16.0))
                 .h(px(16.0))
                 .flex_shrink_0()
@@ -645,8 +685,9 @@ fn render_terminal_tab(
                         .line_height(px(13.0))
                         .child("✕"),
                 )
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.close_terminal(index, window, cx);
+                .on_click(cx.listener(move |this, _, window, cx| match dock {
+                    TerminalDock::Bottom => this.close_terminal(index, window, cx),
+                    TerminalDock::Right => this.close_terminal_right(index, window, cx),
                 })),
         );
     }
@@ -654,9 +695,13 @@ fn render_terminal_tab(
     tab
 }
 
-fn render_new_terminal_button(_t: &Colors, cx: &mut Context<Workspace>) -> impl IntoElement {
+fn render_new_terminal_button(
+    dock: TerminalDock,
+    _t: &Colors,
+    cx: &mut Context<Workspace>,
+) -> impl IntoElement {
     div()
-        .id("term-new-btn")
+        .id(dock.namespaced("term-new-btn"))
         .w(px(28.0))
         .h_full()
         .flex_shrink_0()
@@ -674,14 +719,19 @@ fn render_new_terminal_button(_t: &Colors, cx: &mut Context<Workspace>) -> impl 
                 .line_height(px(16.0))
                 .child("+"),
         )
-        .on_click(cx.listener(|this, _, window, cx| {
-            this.new_terminal(window, cx);
+        .on_click(cx.listener(move |this, _, window, cx| match dock {
+            TerminalDock::Bottom => this.new_terminal(window, cx),
+            TerminalDock::Right => this.new_terminal_right(window, cx),
         }))
 }
 
-fn render_hide_panel_button(_t: &Colors, cx: &mut Context<Workspace>) -> impl IntoElement {
+fn render_hide_panel_button(
+    dock: TerminalDock,
+    _t: &Colors,
+    cx: &mut Context<Workspace>,
+) -> impl IntoElement {
     div()
-        .id("term-hide-btn")
+        .id(dock.namespaced("term-hide-btn"))
         .w(px(28.0))
         .h_full()
         .flex_shrink_0()
@@ -699,8 +749,9 @@ fn render_hide_panel_button(_t: &Colors, cx: &mut Context<Workspace>) -> impl In
                 .h(px(14.0))
                 .text_color(rgba(0x8b949eff)),
         )
-        .on_click(cx.listener(|this, _, window, cx| {
-            this.hide_terminal(window, cx);
+        .on_click(cx.listener(move |this, _, window, cx| match dock {
+            TerminalDock::Bottom => this.hide_terminal(window, cx),
+            TerminalDock::Right => this.hide_terminal_right(window, cx),
         }))
 }
 

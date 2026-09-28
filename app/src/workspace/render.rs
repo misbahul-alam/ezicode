@@ -48,7 +48,9 @@ impl Render for Workspace {
             self.confirm_picker(window, cx);
         }
 
-        if self.show_terminal && !self.terminal_tabs.is_empty() {
+        if (self.show_terminal && !self.terminal_tabs.is_empty())
+            || (self.show_terminal_right && !self.terminal_right_tabs.is_empty())
+        {
             self.poll_terminal_processes(cx);
         }
 
@@ -82,6 +84,7 @@ impl Render for Workspace {
         if self.picker.is_none()
             && self.active_editor().is_none()
             && !self.show_terminal
+            && !self.show_terminal_right
             && self.git_commit_input.is_none()
             && self.inline_creating.is_none()
             && self.inline_renaming.is_none()
@@ -104,6 +107,13 @@ impl Render for Workspace {
         let min_terminal = if self.panel_resize.is_some() { 45.0 } else { 80.0 };
         self.terminal_height = self.terminal_height.clamp(min_terminal, max_terminal);
         let terminal_h = self.terminal_height;
+        // The right dock is clamped like the sidebar (never wider than
+        // width - 320), so it can always coexist with the editor column.
+        let max_terminal_right = f32::from(window.viewport_size().width - px(320.0)).max(180.0);
+        self.terminal_right_width = self
+            .terminal_right_width
+            .clamp(super::TERMINAL_RIGHT_MIN_WIDTH, max_terminal_right);
+        let terminal_right_w = self.terminal_right_width;
         let panel_resize = self.panel_resize;
 
         let explorer_rows = &self.explorer_rows;
@@ -128,6 +138,10 @@ impl Render for Workspace {
         let active_terminal = self.active_terminal;
         let terminal_tab_scroll = self.terminal_tab_scroll.clone();
         let terminal_maximized = self.terminal_maximized && self.show_terminal && !self.terminal_tabs.is_empty();
+        let terminal_right_tabs = &self.terminal_right_tabs;
+        let active_terminal_right = self.active_terminal_right;
+        let terminal_right_tab_scroll = self.terminal_right_tab_scroll.clone();
+        let show_terminal_right = self.show_terminal_right;
 
         let tabs = &self.tabs;
         let active_tab = self.active_tab;
@@ -242,6 +256,9 @@ impl Render for Workspace {
             }))
             .on_action(cx.listener(|this, _: &NewTerminal, window, cx| {
                 this.new_terminal(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &ToggleTerminalRight, window, cx| {
+                this.toggle_terminal_right(window, cx);
             }))
 
             .on_action(cx.listener(|this, _: &NextTerminal, window, cx| {
@@ -555,6 +572,7 @@ impl Render for Workspace {
                                                     .size_full()
                                                     .overflow_hidden()
                                                     .child(crate::terminal::render_terminal_panel(
+                                                        crate::terminal::TerminalDock::Bottom,
                                                         terminal_tabs,
                                                         active_terminal,
                                                         true,
@@ -570,6 +588,7 @@ impl Render for Workspace {
                                                     .flex_shrink_0()
                                                     .overflow_hidden()
                                                     .child(crate::terminal::render_terminal_panel(
+                                                        crate::terminal::TerminalDock::Bottom,
                                                         terminal_tabs,
                                                         active_terminal,
                                                         false,
@@ -581,7 +600,32 @@ impl Render for Workspace {
                                         }
                                     })
                             }),
-                    ),
+                    )
+                    // Zed-style right dock: a terminal panel hugging the
+                    // right edge, with its own PTY sessions. It spans the
+                    // full workspace height (alongside both the editor and
+                    // the bottom terminal) and is resized by dragging the
+                    // vertical handle on its left edge.
+                    .when(show_terminal_right && !terminal_right_tabs.is_empty(), |row| {
+                        row.child(resize_handle(ResizeKind::TerminalRight, &t, cx)).child(
+                            div()
+                                .w(px(terminal_right_w))
+                                .flex_shrink_0()
+                                .h_full()
+                                .overflow_hidden()
+                                .border_l_1()
+                                .border_color(rgba(t.border_variant))
+                                .child(crate::terminal::render_terminal_panel(
+                                    crate::terminal::TerminalDock::Right,
+                                    terminal_right_tabs,
+                                    active_terminal_right,
+                                    false,
+                                    &terminal_right_tab_scroll,
+                                    &t,
+                                    cx,
+                                )),
+                        )
+                    }),
             )
             .child(ui::status_bar::render_status_bar(
                 status,
@@ -592,6 +636,7 @@ impl Render for Workspace {
                 diagnostic_counts,
                 lang_id,
                 lsp_indicator,
+                show_terminal_right && !terminal_right_tabs.is_empty(),
                 &t,
             ))
 
@@ -643,6 +688,23 @@ impl Render for Workspace {
                                         this.terminal_height = dist.clamp(45.0, max_avail - 45.0);
                                     }
                                 }
+                                ResizeKind::TerminalRight => {
+                                    // The dock hugs the window's right edge, so its
+                                    // width is the distance from the cursor to that
+                                    // edge. Below the minimum width the dock hides,
+                                    // exactly like dragging the bottom panel flat.
+                                    let right_edge = f32::from(window.viewport_size().width);
+                                    let dist = right_edge - f32::from(ev.position.x);
+                                    let max_w = (right_edge - 320.0).max(180.0);
+
+                                    if dist < super::TERMINAL_RIGHT_MIN_WIDTH {
+                                        this.show_terminal_right = false;
+                                    } else {
+                                        this.show_terminal_right = true;
+                                        this.terminal_right_width =
+                                            dist.clamp(super::TERMINAL_RIGHT_MIN_WIDTH, max_w);
+                                    }
+                                }
                             }
                             cx.stop_propagation();
                             cx.notify();
@@ -670,6 +732,22 @@ impl Render for Workspace {
                                             }
                                         } else {
                                             this.terminal_height = this.terminal_height.max(80.0);
+                                        }
+                                    }
+                                    ResizeKind::TerminalRight => {
+                                        if !this.show_terminal_right {
+                                            // Hidden by the drag: a click-sized drag
+                                            // (no real movement) re-opens at the
+                                            // default width, like the sidebar above.
+                                            if (rz.start_mouse - f32::from(ev.position.x)).abs() < 5.0 {
+                                                this.show_terminal_right = true;
+                                                this.terminal_right_width =
+                                                    super::TERMINAL_RIGHT_DEFAULT_WIDTH;
+                                            }
+                                        } else {
+                                            this.terminal_right_width = this
+                                                .terminal_right_width
+                                                .max(super::TERMINAL_RIGHT_MIN_WIDTH);
                                         }
                                     }
                                 }
@@ -705,6 +783,7 @@ fn resize_handle(kind: ResizeKind, t: &Colors, cx: &mut Context<Workspace>) -> i
     let (id, vertical) = match kind {
         ResizeKind::Sidebar => ("sidebar-resize-handle", true),
         ResizeKind::Terminal => ("terminal-resize-handle", false),
+        ResizeKind::TerminalRight => ("terminal-right-resize-handle", true),
     };
 
     let line = if vertical {
@@ -758,6 +837,14 @@ fn resize_handle(kind: ResizeKind, t: &Colors, cx: &mut Context<Workspace>) -> i
                             this.terminal_height = 320.0;
                         }
                     }
+                    ResizeKind::TerminalRight => {
+                        this.show_terminal_right = !this.show_terminal_right;
+                        if this.show_terminal_right
+                            && this.terminal_right_width < super::TERMINAL_RIGHT_MIN_WIDTH
+                        {
+                            this.terminal_right_width = super::TERMINAL_RIGHT_DEFAULT_WIDTH;
+                        }
+                    }
                 }
                 this.panel_resize = None;
                 cx.stop_propagation();
@@ -772,6 +859,14 @@ fn resize_handle(kind: ResizeKind, t: &Colors, cx: &mut Context<Workspace>) -> i
                 ResizeKind::Terminal => {
                     let current_h = if this.show_terminal { this.terminal_height } else { 0.0 };
                     (f32::from(ev.position.y), current_h)
+                }
+                ResizeKind::TerminalRight => {
+                    let current_w = if this.show_terminal_right {
+                        this.terminal_right_width
+                    } else {
+                        0.0
+                    };
+                    (f32::from(ev.position.x), current_w)
                 }
             };
             this.panel_resize = Some(PanelResizeDrag {
