@@ -9,6 +9,7 @@ mod lsp;
 mod linux_desktop;
 mod search;
 mod settings;
+mod storage;
 mod terminal;
 mod theme;
 mod ui;
