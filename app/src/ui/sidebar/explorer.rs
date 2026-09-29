@@ -481,6 +481,7 @@ fn inline_rename_row(
     .into_any_element()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn tree_row(
     idx: usize,
     row_data: &VisibleTreeRow,

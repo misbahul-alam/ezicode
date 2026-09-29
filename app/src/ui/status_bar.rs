@@ -75,10 +75,8 @@ pub(crate) fn render_status_bar(
                             // Zed-style: the status-bar branch opens the
                             // branch switcher, not just the git panel.
                             .on_click(|_, window, cx| {
-                                window.dispatch_action(
-                                    Box::new(crate::actions::GitBranchPicker),
-                                    cx,
-                                );
+                                window
+                                    .dispatch_action(Box::new(crate::actions::GitBranchPicker), cx);
                             })
                             .child(
                                 svg()

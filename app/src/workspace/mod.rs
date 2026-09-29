@@ -3347,7 +3347,11 @@ impl Workspace {
             return;
         }
         if !amend {
-            let scope_count = if all { tracked_dirty.max(staged) } else { staged };
+            let scope_count = if all {
+                tracked_dirty.max(staged)
+            } else {
+                staged
+            };
             if scope_count == 0 {
                 self.status = if change_count > 0 {
                     "Nothing staged — use + on a file or 'stage all' first".into()
@@ -3557,8 +3561,7 @@ impl Workspace {
         // Staged-only entries diff the index; anything with worktree edits
         // (or an untracked file) diffs the working tree — previously a file
         // that was both staged *and* re-edited showed only its staged half.
-        let staged =
-            change.is_staged() && change.worktree.is_none() && !change.is_untracked();
+        let staged = change.is_staged() && change.worktree.is_none() && !change.is_untracked();
 
         if let Some(idx) = self.tabs.iter().position(|t| {
             t.diff
@@ -3641,9 +3644,7 @@ impl Workspace {
                                 Err(_) => (
                                     Some(String::new()),
                                     None,
-                                    Some(
-                                        "No text changes (binary or unreadable file)".to_string(),
-                                    ),
+                                    Some("No text changes (binary or unreadable file)".to_string()),
                                 ),
                             }
                         }
@@ -4259,7 +4260,9 @@ impl Workspace {
             return;
         };
         cx.spawn_in(window, async move |this, cx| {
-            let branches = cx.background_spawn(async move { git::branches(&root) }).await;
+            let branches = cx
+                .background_spawn(async move { git::branches(&root) })
+                .await;
             let _ = this.update_in(cx, |workspace, window, cx| {
                 workspace.open_branch_picker(branches, false, window, cx);
             });
@@ -4285,7 +4288,9 @@ impl Workspace {
             return;
         };
         cx.spawn_in(window, async move |this, cx| {
-            let branches = cx.background_spawn(async move { git::branches(&root) }).await;
+            let branches = cx
+                .background_spawn(async move { git::branches(&root) })
+                .await;
             let _ = this.update_in(cx, |workspace, window, cx| {
                 workspace.open_branch_picker(branches, true, window, cx);
             });

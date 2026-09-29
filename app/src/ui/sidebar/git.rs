@@ -176,11 +176,10 @@ pub(crate) fn render_git_panel(
                     cx,
                 ));
                 if params.conflicts_expanded {
-                    body = body.child(div().flex().flex_col().children(
-                        conflicts.iter().map(|c| {
+                    body =
+                        body.child(div().flex().flex_col().children(conflicts.iter().map(|c| {
                             change_row(c, RowSection::Conflict, "git-conflict-row", t, cx)
-                        }),
-                    ));
+                        })));
                 }
             }
 
@@ -205,13 +204,12 @@ pub(crate) fn render_git_panel(
                     cx,
                 ));
                 if params.staged_expanded {
-                    body = body.child(
-                        div().flex().flex_col().children(
-                            staged
-                                .iter()
-                                .map(|c| change_row(c, RowSection::Staged, "git-staged-row", t, cx)),
-                        ),
-                    );
+                    body =
+                        body.child(div().flex().flex_col().children(
+                            staged.iter().map(|c| {
+                                change_row(c, RowSection::Staged, "git-staged-row", t, cx)
+                            }),
+                        ));
                 }
             }
 
@@ -247,13 +245,10 @@ pub(crate) fn render_git_panel(
                     cx,
                 ));
                 if params.changes_expanded {
-                    body = body.child(
-                        div().flex().flex_col().children(
-                            unstaged.iter().map(|c| {
-                                change_row(c, RowSection::Unstaged, "git-change-row", t, cx)
-                            }),
-                        ),
-                    );
+                    body =
+                        body.child(div().flex().flex_col().children(unstaged.iter().map(|c| {
+                            change_row(c, RowSection::Unstaged, "git-change-row", t, cx)
+                        })));
                 }
             }
 
@@ -278,11 +273,10 @@ pub(crate) fn render_git_panel(
                     cx,
                 ));
                 if params.untracked_expanded {
-                    body = body.child(div().flex().flex_col().children(
-                        untracked.iter().map(|c| {
+                    body =
+                        body.child(div().flex().flex_col().children(untracked.iter().map(|c| {
                             change_row(c, RowSection::Untracked, "git-untracked-row", t, cx)
-                        }),
-                    ));
+                        })));
                 }
             }
 
@@ -769,7 +763,7 @@ fn change_row(
         if s.is_empty() {
             None
         } else {
-            Some(s.replace(&['/', '\\'][..], &std::path::MAIN_SEPARATOR.to_string()))
+            Some(s.replace(&['/', '\\'][..], std::path::MAIN_SEPARATOR_STR))
         }
     });
 

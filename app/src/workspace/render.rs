@@ -205,9 +205,8 @@ impl Render for Workspace {
         let git_repo = self.git.as_ref();
         let git_changes = git_repo.map(|g| g.change_count()).unwrap_or(0);
         let git_branch = git_repo.and_then(|g| g.branch.clone());
-        let git_sync = git_repo.and_then(|g| {
-            (g.ahead > 0 || g.behind > 0).then_some((g.ahead, g.behind))
-        });
+        let git_sync =
+            git_repo.and_then(|g| (g.ahead > 0 || g.behind > 0).then_some((g.ahead, g.behind)));
         let git_repo_section_expanded = self.git_repo_section_expanded;
         let git_conflicts_expanded = self.git_conflicts_expanded;
         let git_staged_expanded = self.git_staged_expanded;
