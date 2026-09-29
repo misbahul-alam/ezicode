@@ -53,6 +53,14 @@ actions!(
         PrevTerminal,
         CloseTerminal,
         ClearTerminal,
+        /// Copy the active terminal selection.
+        TerminalCopy,
+        /// Paste the current clipboard payload into the active terminal.
+        TerminalPaste,
+        /// Paste only the clipboard's text representation.
+        TerminalPasteText,
+        /// Select the active terminal's complete scrollback.
+        TerminalSelectAll,
         TerminalTab1,
         TerminalTab2,
         TerminalTab3,

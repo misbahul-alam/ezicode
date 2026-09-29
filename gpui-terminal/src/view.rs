@@ -68,6 +68,10 @@ pub struct TerminalConfig {
     pub blink_interval: Duration,
     /// Copy the selection to the clipboard as soon as the mouse is released.
     pub copy_on_select: bool,
+    /// Preserve the component's legacy right-click copy/paste gesture.
+    /// Embedders with a context menu should disable this so the same click is
+    /// not also forwarded to the PTY or pasted before the menu opens.
+    pub right_click_paste: bool,
     /// Translate wheel events into arrow keys while the alternate screen is
     /// active and the application is not doing its own mouse reporting.
     pub alternate_scroll: bool,
@@ -105,6 +109,7 @@ impl Default for TerminalConfig {
             cursor_blink: true,
             blink_interval: Duration::from_millis(500),
             copy_on_select: false,
+            right_click_paste: true,
             alternate_scroll: true,
             scroll_sensitivity: 1.0,
             semantic_escape_chars: ",│`|:\"' ()[]{}<>\t".into(),
@@ -941,6 +946,14 @@ impl TerminalView {
         window.focus(&self.focus_handle);
         self.last_mouse_position = event.position;
 
+        // A host-provided context menu owns right click completely. In
+        // particular, do not send a mouse report to a full-screen TUI and do
+        // not perform the legacy copy/paste gesture before the event bubbles
+        // to the host's menu wrapper.
+        if event.button == MouseButton::Right && !self.config.right_click_paste {
+            return;
+        }
+
         if self.is_over_scrollbar(event.position) {
             self.scrollbar_dragging = true;
             self.scroll_to_mouse_y(event.position.y, cx);
@@ -1014,6 +1027,11 @@ impl TerminalView {
 
     fn on_mouse_up(&mut self, event: &MouseUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
         self.drag_scroll_task = None;
+
+        if event.button == MouseButton::Right && !self.config.right_click_paste {
+            self.mouse_down_button = None;
+            return;
+        }
 
         if self.scrollbar_dragging {
             self.scrollbar_dragging = false;
