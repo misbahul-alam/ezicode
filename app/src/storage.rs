@@ -60,6 +60,9 @@ pub struct LayoutState {
     pub terminal_maximized: bool,
     #[serde(default = "default_activity")]
     pub activity: String,
+    /// VS Code's `workbench.tree.enableStickyScroll`, per workspace.
+    #[serde(default = "default_true")]
+    pub explorer_sticky_scroll: bool,
 }
 
 impl Default for LayoutState {
@@ -73,6 +76,7 @@ impl Default for LayoutState {
             show_terminal_right: false,
             terminal_maximized: false,
             activity: default_activity(),
+            explorer_sticky_scroll: default_true(),
         }
     }
 }
@@ -88,6 +92,9 @@ pub struct WorkspaceState {
     pub layout: LayoutState,
     #[serde(default)]
     pub expanded_folders: Vec<PathBuf>,
+    /// Focused explorer row, restored on the next session like VS Code does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explorer_selected: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -298,8 +305,10 @@ mod tests {
                 show_terminal_right: true,
                 terminal_maximized: false,
                 activity: "Search".to_string(),
+                explorer_sticky_scroll: true,
             },
             expanded_folders: vec![PathBuf::from("/home/user/project/src")],
+            explorer_selected: Some(PathBuf::from("/home/user/project/src/main.rs")),
         };
 
         let json = serde_json::to_string_pretty(&state).unwrap();
@@ -342,6 +351,8 @@ mod tests {
         assert!(!state.layout.show_terminal_right);
         assert_eq!(state.layout.activity, "Explorer");
         assert!(state.expanded_folders.is_empty());
+        assert!(state.layout.explorer_sticky_scroll);
+        assert!(state.explorer_selected.is_none());
     }
 
     /// Workspace files written before the right terminal dock existed have no
@@ -369,5 +380,7 @@ mod tests {
         // Right-dock defaults, not a parse error.
         assert_eq!(state.layout.terminal_right_width, 420.0);
         assert!(!state.layout.show_terminal_right);
+        // Sticky scroll defaults on, exactly like VS Code.
+        assert!(state.layout.explorer_sticky_scroll);
     }
 }

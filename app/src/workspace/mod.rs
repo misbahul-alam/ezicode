@@ -141,11 +141,15 @@ pub(crate) struct InlineRenaming {
 #[derive(Clone, Debug)]
 pub(crate) struct ExplorerDrag {
     pub(crate) path: PathBuf,
+    /// How many entries are being dragged, so the drag chip can say "+2".
+    pub(crate) count: usize,
 }
 
 #[derive(Clone, Debug)]
 pub(crate) struct ExplorerClipboard {
-    pub(crate) path: PathBuf,
+    /// Every entry that was cut or copied — the explorer is multi-select, so
+    /// Ctrl+C on three files pastes three files.
+    pub(crate) paths: Vec<PathBuf>,
     pub(crate) cut: bool,
 }
 
@@ -172,8 +176,29 @@ pub(crate) struct Workspace {
     pub(crate) explorer_scroll_handle: UniformListScrollHandle,
     /// Focus target used by explorer keyboard navigation.
     pub(crate) explorer_focus_handle: FocusHandle,
-    /// Currently selected path in the explorer.
+    /// The explorer's *focused* entry: the row keyboard navigation moves, the
+    /// anchor new selections grow from, and the row drawn with a focus ring.
     pub(crate) selected_path: Option<PathBuf>,
+    /// Every selected row. VS Code's explorer is a multi-select tree: Ctrl or
+    /// Cmd click toggles, Shift click extends from the anchor. The set is only
+    /// honoured while it still contains `selected_path`, so the many places
+    /// that just assign `selected_path` implicitly collapse it back to a
+    /// single selection instead of leaving a stale highlight behind.
+    pub(crate) explorer_selection: Vec<PathBuf>,
+    /// Anchor row for Shift+click / Shift+arrow range selection.
+    pub(crate) explorer_selection_anchor: Option<PathBuf>,
+    /// VS Code's `workbench.tree.enableStickyScroll`.
+    pub(crate) explorer_sticky_scroll: bool,
+    /// Number of sticky rows painted on the last frame. Keyboard navigation
+    /// scrolls past them so the focused row never hides under the widget.
+    pub(crate) explorer_sticky_rows: usize,
+    /// Buffered type-ahead query and the generation that will clear it.
+    pub(crate) explorer_typeahead: String,
+    pub(crate) explorer_typeahead_generation: u64,
+    /// Folder currently hovered during a drag, and the generation used to
+    /// debounce VS Code's "hover a collapsed folder to expand it".
+    pub(crate) explorer_drag_target: Option<PathBuf>,
+    pub(crate) explorer_drag_generation: u64,
     pub(crate) explorer_section_expanded: bool,
     pub(crate) git_repo_section_expanded: bool,
     pub(crate) git_conflicts_expanded: bool,
@@ -556,6 +581,14 @@ impl Workspace {
             root_display: String::new(),
             root_display_shared: SharedString::new_static(""),
             selected_path: None,
+            explorer_selection: Vec::new(),
+            explorer_selection_anchor: None,
+            explorer_sticky_scroll: true,
+            explorer_sticky_rows: 0,
+            explorer_typeahead: String::new(),
+            explorer_typeahead_generation: 0,
+            explorer_drag_target: None,
+            explorer_drag_generation: 0,
             explorer_section_expanded: true,
             git_repo_section_expanded: true,
             git_conflicts_expanded: true,
@@ -790,6 +823,10 @@ impl Workspace {
             .as_ref()
             .map(|s| s.expanded_folders.clone())
             .unwrap_or_default();
+        let saved_selection = saved_state
+            .as_ref()
+            .and_then(|s| s.explorer_selected.clone())
+            .filter(|path| path.exists());
 
         if let Some(saved) = &saved_state {
             let max_w = 800.0f32;
@@ -809,6 +846,7 @@ impl Workspace {
             // terminals, and there the saved visibility is honored.
             self.show_terminal_right =
                 saved.layout.show_terminal_right && !self.terminal_right_tabs.is_empty();
+            self.explorer_sticky_scroll = saved.layout.explorer_sticky_scroll;
             self.activity = match saved.layout.activity.as_str() {
                 "Search" => Activity::Search,
                 "Git" => Activity::Git,
@@ -823,6 +861,9 @@ impl Workspace {
         self.explorer_section_expanded = true;
         self.rebuild_explorer_rows();
         self.selected_path = None;
+        self.explorer_selection.clear();
+        self.explorer_selection_anchor = None;
+        self.explorer_typeahead.clear();
         self.inline_creating = None;
         self.inline_renaming = None;
         self.explorer_clipboard = None;
@@ -845,6 +886,12 @@ impl Workspace {
                     }
                     workspace.tree = merged;
                     workspace.rebuild_explorer_rows();
+                    // Restore the previously focused row and scroll it into
+                    // view, the way VS Code reopens an explorer.
+                    if let Some(selected) = saved_selection.clone() {
+                        workspace.reveal_tree_path(&selected);
+                        workspace.set_explorer_selection(selected);
+                    }
                     workspace.status = format!("Opened folder {}", workspace.root_display);
                     cx.notify();
                 }
@@ -1120,11 +1167,23 @@ impl Workspace {
     }
 
     pub(crate) fn new_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let working_dir = self
-            .terminal_tabs
-            .get(self.active_terminal)
-            .and_then(|term| term.read(cx).working_dir.clone())
-            .or_else(|| self.root.clone());
+        self.new_terminal_in(None, window, cx);
+    }
+
+    /// Open a terminal, optionally rooted at a specific directory (the
+    /// explorer's "Open in Integrated Terminal").
+    pub(crate) fn new_terminal_in(
+        &mut self,
+        directory: Option<PathBuf>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let working_dir = directory.or_else(|| {
+            self.terminal_tabs
+                .get(self.active_terminal)
+                .and_then(|term| term.read(cx).working_dir.clone())
+                .or_else(|| self.root.clone())
+        });
 
         let _id = self.next_terminal_id;
         self.next_terminal_id += 1;
@@ -1593,13 +1652,14 @@ impl Workspace {
         self.explorer_section_expanded = true;
         self.rebuild_explorer_rows();
         if let Some(index) = self.explorer_rows.iter().position(|row| row.path == path) {
-            self.explorer_scroll_handle
-                .scroll_to_item(index, ScrollStrategy::Center);
+            // Minimal reveal, clear of the sticky headers — VS Code only
+            // scrolls when the row is actually out of view.
+            self.explorer_reveal_index(index);
         }
     }
 
     pub(crate) fn open_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        self.selected_path = Some(path.clone());
+        self.set_explorer_selection(path.clone());
         self.reveal_tree_path(&path);
 
         if let Some(idx) = self
@@ -2179,6 +2239,301 @@ impl Workspace {
         cx.notify();
     }
 
+    // ---------------------------------------------------------------------
+    // Selection
+    //
+    // `selected_path` is the focused row and `explorer_selection` the full
+    // multi-selection. The set is only trusted while it still contains the
+    // focused row, so code elsewhere that just assigns `selected_path` (open
+    // a file, reveal a search hit, finish a rename…) implicitly collapses the
+    // selection instead of leaving stale highlights behind.
+    // ---------------------------------------------------------------------
+
+    /// Every entry the next explorer command should act on.
+    pub(crate) fn explorer_selected_entries(&self) -> Vec<PathBuf> {
+        let Some(focused) = self.selected_path.clone() else {
+            return Vec::new();
+        };
+        if self.explorer_selection.contains(&focused) {
+            self.explorer_selection.clone()
+        } else {
+            vec![focused]
+        }
+    }
+
+    pub(crate) fn set_explorer_selection(&mut self, path: PathBuf) {
+        self.explorer_selection = vec![path.clone()];
+        self.explorer_selection_anchor = Some(path.clone());
+        self.selected_path = Some(path);
+    }
+
+    pub(crate) fn set_explorer_selection_many(&mut self, paths: Vec<PathBuf>) {
+        if let Some(last) = paths.last().cloned() {
+            self.explorer_selection = paths;
+            self.explorer_selection_anchor = Some(last.clone());
+            self.selected_path = Some(last);
+        }
+    }
+
+    pub(crate) fn clear_explorer_selection(&mut self, cx: &mut Context<Self>) {
+        self.explorer_selection.clear();
+        self.explorer_selection_anchor = None;
+        self.selected_path = None;
+        self.explorer_typeahead.clear();
+        cx.notify();
+    }
+
+    /// Ctrl/Cmd+click: add or remove one row without disturbing the rest.
+    pub(crate) fn toggle_explorer_selection(&mut self, path: PathBuf) {
+        let mut selection = self.explorer_selected_entries();
+        if let Some(ix) = selection.iter().position(|item| item == &path) {
+            selection.remove(ix);
+            self.explorer_selection = selection;
+            self.selected_path = self.explorer_selection.last().cloned();
+        } else {
+            selection.push(path.clone());
+            self.explorer_selection = selection;
+            self.selected_path = Some(path.clone());
+            self.explorer_selection_anchor = Some(path);
+        }
+    }
+
+    /// Shift+click / Shift+arrow: select the inclusive range of visible rows
+    /// between the anchor and `path`.
+    pub(crate) fn extend_explorer_selection(&mut self, path: PathBuf) {
+        let rows = Arc::clone(&self.explorer_rows);
+        let target = rows.iter().position(|row| row.path == path);
+        // Only trust the stored anchor while the selection it belongs to is
+        // still live; otherwise the focused row is the anchor.
+        let selection_is_live = self
+            .selected_path
+            .as_ref()
+            .is_some_and(|focused| self.explorer_selection.contains(focused));
+        let anchor_path = if selection_is_live {
+            self.explorer_selection_anchor.clone()
+        } else {
+            self.selected_path.clone()
+        };
+        let anchor = anchor_path
+            .as_ref()
+            .and_then(|anchor| rows.iter().position(|row| &row.path == anchor));
+        match (target, anchor) {
+            (Some(target), Some(anchor)) => {
+                let (lo, hi) = if anchor <= target {
+                    (anchor, target)
+                } else {
+                    (target, anchor)
+                };
+                self.explorer_selection = rows[lo..=hi]
+                    .iter()
+                    .map(|row| row.path.clone())
+                    .collect::<Vec<_>>();
+                self.selected_path = Some(path);
+            }
+            _ => self.set_explorer_selection(path),
+        }
+    }
+
+    pub(crate) fn select_all_explorer_rows(&mut self, cx: &mut Context<Self>) {
+        if self.explorer_rows.is_empty() {
+            return;
+        }
+        self.explorer_selection = self
+            .explorer_rows
+            .iter()
+            .map(|row| row.path.clone())
+            .collect::<Vec<_>>();
+        if self.selected_path.is_none() {
+            self.selected_path = self.explorer_selection.first().cloned();
+        }
+        cx.notify();
+    }
+
+    // ---------------------------------------------------------------------
+    // Mouse
+    // ---------------------------------------------------------------------
+
+    /// A click on a tree row, with VS Code's modifier rules: plain click
+    /// selects (and opens files as a preview tab / toggles folders), Ctrl or
+    /// Cmd toggles one row, Shift extends the range, Alt on a folder expands
+    /// or collapses the whole subtree, and a double click pins the preview.
+    pub(crate) fn explorer_row_click(
+        &mut self,
+        path: PathBuf,
+        is_dir: bool,
+        modifiers: gpui::Modifiers,
+        click_count: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        window.focus(&self.explorer_focus_handle);
+        self.explorer_typeahead.clear();
+
+        if modifiers.shift {
+            self.extend_explorer_selection(path);
+            cx.notify();
+            return;
+        }
+        if modifiers.control || modifiers.platform {
+            self.toggle_explorer_selection(path);
+            cx.notify();
+            return;
+        }
+
+        self.set_explorer_selection(path.clone());
+        if is_dir {
+            if modifiers.alt {
+                self.toggle_dir_recursive(&path, cx);
+            } else {
+                self.toggle_dir(&path, cx);
+            }
+            return;
+        }
+
+        self.open_file(path.clone(), window, cx);
+        if click_count >= 2 {
+            self.pin_preview_tab(&path, cx);
+        }
+    }
+
+    /// Double clicking a file in VS Code turns the italic preview tab into a
+    /// permanent one.
+    pub(crate) fn pin_preview_tab(&mut self, path: &Path, cx: &mut Context<Self>) {
+        if let Some(tab) = self
+            .tabs
+            .iter_mut()
+            .find(|tab| tab.path.as_deref() == Some(path))
+        {
+            if tab.preview {
+                tab.preview = false;
+                cx.notify();
+            }
+        }
+    }
+
+    /// Alt+click on a twistie: expand or collapse every directory below this
+    /// one. Directories that were never read are fetched off the UI thread.
+    pub(crate) fn toggle_dir_recursive(&mut self, path: &Path, cx: &mut Context<Self>) {
+        let mut needs_load = Vec::new();
+        let expanded = crate::fs_tree::with_node_mut(&mut self.tree, path, &mut |node| {
+            if !node.is_dir {
+                return false;
+            }
+            let expand = !node.expanded;
+            node.expanded = expand;
+            if expand && !node.children_loaded {
+                needs_load.push(node.path.clone());
+            }
+            crate::fs_tree::set_expanded_recursive(&mut node.children, expand, &mut needs_load);
+            expand
+        });
+        if expanded.is_none() {
+            return;
+        }
+        self.rebuild_explorer_rows();
+        self.persist_workspace_state(cx);
+        cx.notify();
+        for dir in needs_load {
+            self.load_directory_async(dir, cx);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Drag and drop
+    // ---------------------------------------------------------------------
+
+    /// Hovering a collapsed folder mid-drag expands it after a short delay,
+    /// so a file can be dropped deep into the tree in one gesture.
+    pub(crate) fn explorer_drag_over(&mut self, dir: PathBuf, cx: &mut Context<Self>) {
+        if self.explorer_drag_target.as_ref() == Some(&dir) {
+            return;
+        }
+        self.explorer_drag_target = Some(dir.clone());
+        self.explorer_drag_generation = self.explorer_drag_generation.wrapping_add(1);
+        let generation = self.explorer_drag_generation;
+        cx.notify();
+
+        let already_expanded = self
+            .explorer_rows
+            .iter()
+            .any(|row| row.path == dir && row.expanded);
+        if already_expanded {
+            return;
+        }
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(500))
+                .await;
+            let _ = this.update(cx, |workspace, cx| {
+                if workspace.explorer_drag_generation == generation
+                    && workspace.explorer_drag_target.as_ref() == Some(&dir)
+                {
+                    let collapsed = workspace
+                        .explorer_rows
+                        .iter()
+                        .any(|row| row.path == dir && row.is_dir && !row.expanded);
+                    if collapsed {
+                        workspace.toggle_dir(&dir, cx);
+                    }
+                }
+            });
+        })
+        .detach();
+    }
+
+    pub(crate) fn explorer_drag_leave(&mut self, dir: &Path, cx: &mut Context<Self>) {
+        if self.explorer_drag_target.as_deref() == Some(dir) {
+            self.explorer_drag_target = None;
+            cx.notify();
+        }
+    }
+
+    /// Drop handler: dropping onto a file targets its folder, and dragging a
+    /// row that is part of the selection moves the whole selection.
+    pub(crate) fn explorer_drop(
+        &mut self,
+        dragged: &Path,
+        destination: &Path,
+        cx: &mut Context<Self>,
+    ) {
+        self.explorer_drag_target = None;
+        let destination_dir = if destination.is_dir() {
+            destination.to_path_buf()
+        } else {
+            match destination.parent() {
+                Some(parent) => parent.to_path_buf(),
+                None => return,
+            }
+        };
+
+        let selection = self.explorer_selected_entries();
+        let sources = if selection.iter().any(|path| path == dragged) {
+            selection
+        } else {
+            vec![dragged.to_path_buf()]
+        };
+
+        let mut moved = Vec::new();
+        for source in sources {
+            let Some(name) = source.file_name() else {
+                continue;
+            };
+            if self.move_entry(&source, &destination_dir, cx) {
+                moved.push(destination_dir.join(name));
+            }
+        }
+        if !moved.is_empty() {
+            self.ensure_directory_visible(&destination_dir);
+            self.rebuild_explorer_rows();
+            self.set_explorer_selection_many(moved);
+        }
+        cx.notify();
+    }
+
+    // ---------------------------------------------------------------------
+    // Keyboard
+    // ---------------------------------------------------------------------
+
     pub(crate) fn handle_explorer_key(
         &mut self,
         event: &gpui::KeyDownEvent,
@@ -2186,16 +2541,18 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         let key = event.keystroke.key.as_str();
+        let modifiers = event.keystroke.modifiers;
 
         if self.inline_creating.is_some() || self.inline_renaming.is_some() {
             return;
         }
 
-        if event.keystroke.modifiers.control {
-            match (key, event.keystroke.modifiers.shift) {
+        if modifiers.control || modifiers.platform {
+            match (key, modifiers.shift) {
                 ("c", false) => self.explorer_copy(cx),
                 ("x", false) => self.explorer_cut(cx),
                 ("v", false) => self.explorer_paste(cx),
+                ("a", false) => self.select_all_explorer_rows(cx),
                 ("n", true) => {
                     let selected_folder = self.selected_path.clone().filter(|path| path.is_dir());
                     self.start_inline_create(CreatingKind::Folder, selected_folder, window, cx);
@@ -2207,14 +2564,26 @@ impl Workspace {
         }
 
         let rows = Arc::clone(&self.explorer_rows);
+        if rows.is_empty() {
+            return;
+        }
         let current = self
             .selected_path
             .as_ref()
             .and_then(|selected| rows.iter().position(|row| &row.path == selected));
-        if rows.is_empty() {
+
+        if key == "escape" {
+            self.explorer_typeahead.clear();
+            if self.explorer_selection.len() > 1 {
+                if let Some(focused) = self.selected_path.clone() {
+                    self.set_explorer_selection(focused);
+                }
+            }
+            cx.notify();
+            cx.stop_propagation();
             return;
         }
-        if matches!(key, "f2") {
+        if key == "f2" {
             if let Some(path) = self.selected_path.clone() {
                 self.start_inline_rename(path, window, cx);
                 cx.stop_propagation();
@@ -2222,24 +2591,31 @@ impl Workspace {
             return;
         }
         if matches!(key, "delete" | "backspace") {
-            if let Some(path) = self.selected_path.clone() {
-                self.delete_entry(&path, cx);
-                cx.stop_propagation();
-            }
+            self.delete_selected_entries(cx);
+            cx.stop_propagation();
             return;
         }
+
         let current_ix = current.unwrap_or(0);
+        let page = self.explorer_page_size();
 
         match key {
             "arrowdown" | "down" => {
                 let next = (current_ix + 1).min(rows.len() - 1);
-                self.select_explorer_index(next, cx);
+                self.move_explorer_focus(next, modifiers.shift, cx);
             }
             "arrowup" | "up" => {
-                self.select_explorer_index(current_ix.saturating_sub(1), cx);
+                self.move_explorer_focus(current_ix.saturating_sub(1), modifiers.shift, cx);
             }
-            "home" => self.select_explorer_index(0, cx),
-            "end" => self.select_explorer_index(rows.len() - 1, cx),
+            "pagedown" => {
+                let next = (current_ix + page).min(rows.len() - 1);
+                self.move_explorer_focus(next, modifiers.shift, cx);
+            }
+            "pageup" => {
+                self.move_explorer_focus(current_ix.saturating_sub(page), modifiers.shift, cx);
+            }
+            "home" => self.move_explorer_focus(0, modifiers.shift, cx),
+            "end" => self.move_explorer_focus(rows.len() - 1, modifiers.shift, cx),
             "arrowright" | "right" => {
                 let row = &rows[current_ix];
                 if row.is_dir && !row.expanded {
@@ -2248,7 +2624,7 @@ impl Workspace {
                 } else if row.is_dir {
                     if let Some(next) = rows.get(current_ix + 1) {
                         if next.depth > row.depth {
-                            self.select_explorer_index(current_ix + 1, cx);
+                            self.move_explorer_focus(current_ix + 1, false, cx);
                         }
                     }
                 }
@@ -2262,30 +2638,171 @@ impl Workspace {
                     if let Some(parent_ix) =
                         (0..current_ix).rev().find(|&ix| rows[ix].depth < row.depth)
                     {
-                        self.select_explorer_index(parent_ix, cx);
+                        self.move_explorer_focus(parent_ix, false, cx);
                     }
                 }
             }
-            "enter" => {
+            "enter" | "space" => {
                 let path = rows[current_ix].path.clone();
                 if rows[current_ix].is_dir {
                     self.toggle_dir(&path, cx);
                 } else {
-                    self.open_file(path, window, cx);
+                    self.open_file(path.clone(), window, cx);
+                    if key == "enter" {
+                        self.pin_preview_tab(&path, cx);
+                    }
                 }
             }
-            _ => return,
+            "*" => {
+                // VS Code expands the whole subtree of the focused folder.
+                let row = &rows[current_ix];
+                if row.is_dir {
+                    let path = row.path.clone();
+                    self.toggle_dir_recursive(&path, cx);
+                }
+            }
+            _ => {
+                if !self.explorer_type_ahead(key, modifiers, current_ix, cx) {
+                    return;
+                }
+            }
         }
         cx.stop_propagation();
     }
 
-    fn select_explorer_index(&mut self, index: usize, cx: &mut Context<Self>) {
+    /// Roughly how many rows fit in the panel; used by PageUp/PageDown.
+    fn explorer_page_size(&self) -> usize {
+        let viewport = self
+            .explorer_scroll_handle
+            .0
+            .borrow()
+            .last_item_size
+            .map(|size| f32::from(size.item.height))
+            .unwrap_or(0.0);
+        let row_height = crate::ui::sidebar::explorer::ROW_HEIGHT;
+        if viewport > row_height {
+            ((viewport / row_height).floor() as usize)
+                .saturating_sub(1)
+                .max(1)
+        } else {
+            10
+        }
+    }
+
+    /// Jump to the next row whose name starts with the typed characters, the
+    /// way VS Code's trees respond to typing. Returns whether the key was
+    /// consumed.
+    fn explorer_type_ahead(
+        &mut self,
+        key: &str,
+        modifiers: gpui::Modifiers,
+        current_ix: usize,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if modifiers.control || modifiers.platform || modifiers.alt || modifiers.function {
+            return false;
+        }
+        let mut chars = key.chars();
+        let Some(ch) = chars.next() else {
+            return false;
+        };
+        if chars.next().is_some() || ch.is_control() || ch == ' ' {
+            return false;
+        }
+
+        self.explorer_typeahead.push(ch);
+        // Repeating the same letter cycles through matches, as in VS Code.
+        let repeated = self.explorer_typeahead.chars().all(|c| c == ch);
+        let query = if repeated && self.explorer_typeahead.chars().count() > 1 {
+            ch.to_string()
+        } else {
+            self.explorer_typeahead.clone()
+        };
+        let start = if query.chars().count() == 1 {
+            current_ix + 1
+        } else {
+            current_ix
+        };
+        if let Some(index) = crate::fs_tree::type_ahead_index(&self.explorer_rows, start, &query) {
+            let path = self.explorer_rows[index].path.clone();
+            self.set_explorer_selection(path);
+            self.explorer_reveal_index(index);
+            cx.notify();
+        }
+
+        // Expire the buffer the way a list search box would.
+        self.explorer_typeahead_generation = self.explorer_typeahead_generation.wrapping_add(1);
+        let generation = self.explorer_typeahead_generation;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(900))
+                .await;
+            let _ = this.update(cx, |workspace, _cx| {
+                if workspace.explorer_typeahead_generation == generation {
+                    workspace.explorer_typeahead.clear();
+                }
+            });
+        })
+        .detach();
+        true
+    }
+
+    fn move_explorer_focus(&mut self, index: usize, extend: bool, cx: &mut Context<Self>) {
         let Some(row) = self.explorer_rows.get(index) else {
             return;
         };
-        self.selected_path = Some(row.path.clone());
+        let path = row.path.clone();
+        if extend {
+            self.extend_explorer_selection(path);
+        } else {
+            self.set_explorer_selection(path);
+        }
+        self.explorer_reveal_index(index);
+        cx.notify();
+    }
+
+    /// Scroll just enough to bring a row into view, keeping it clear of the
+    /// sticky header stack — VS Code never parks the focused row under it.
+    pub(crate) fn explorer_reveal_index(&self, index: usize) {
+        let sticky = if self.explorer_sticky_scroll {
+            self.explorer_sticky_rows
+        } else {
+            0
+        };
         self.explorer_scroll_handle
-            .scroll_to_item(index, ScrollStrategy::Center);
+            .scroll_to_item_with_offset(index, ScrollStrategy::Top, sticky);
+    }
+
+    /// Delete everything currently selected (VS Code deletes the whole
+    /// selection, not just the focused row).
+    pub(crate) fn delete_selected_entries(&mut self, cx: &mut Context<Self>) {
+        let entries = self.explorer_selected_entries();
+        if entries.is_empty() {
+            return;
+        }
+        // Pick the row that should take focus afterwards, like VS Code does.
+        let next_focus = self
+            .explorer_rows
+            .iter()
+            .position(|row| entries.iter().any(|path| path == &row.path))
+            .and_then(|first| {
+                self.explorer_rows
+                    .iter()
+                    .skip(first)
+                    .find(|row| {
+                        !entries
+                            .iter()
+                            .any(|path| is_same_or_descendant(path, &row.path))
+                    })
+                    .map(|row| row.path.clone())
+            });
+        for path in &entries {
+            self.delete_entry(path, cx);
+        }
+        self.explorer_selection.clear();
+        if let Some(next) = next_focus.filter(|path| path.exists()) {
+            self.set_explorer_selection(next);
+        }
         cx.notify();
     }
 
@@ -2667,29 +3184,37 @@ impl Workspace {
     }
 
     pub(crate) fn explorer_copy(&mut self, cx: &mut Context<Self>) {
-        let Some(path) = self.selected_path.clone() else {
+        let paths = self.explorer_selected_entries();
+        if paths.is_empty() {
             return;
+        }
+        self.status = if paths.len() == 1 {
+            format!("Copied {}", display_name(&paths[0]))
+        } else {
+            format!("Copied {} items", paths.len())
         };
-        self.explorer_clipboard = Some(ExplorerClipboard { path, cut: false });
-        self.status = "Copied explorer item".into();
+        self.explorer_clipboard = Some(ExplorerClipboard { paths, cut: false });
         cx.notify();
     }
 
     pub(crate) fn explorer_cut(&mut self, cx: &mut Context<Self>) {
-        let Some(path) = self.selected_path.clone() else {
+        let paths = self.explorer_selected_entries();
+        if paths.is_empty() {
             return;
+        }
+        self.status = if paths.len() == 1 {
+            format!("Cut {}", display_name(&paths[0]))
+        } else {
+            format!("Cut {} items", paths.len())
         };
-        self.explorer_clipboard = Some(ExplorerClipboard { path, cut: true });
-        self.status = "Cut explorer item".into();
+        self.explorer_clipboard = Some(ExplorerClipboard { paths, cut: true });
         cx.notify();
     }
 
-    pub(crate) fn explorer_paste(&mut self, cx: &mut Context<Self>) {
-        let Some(clipboard) = self.explorer_clipboard.clone() else {
-            return;
-        };
-        let destination_dir = self
-            .selected_path
+    /// Where a paste lands: the focused folder, otherwise the focused file's
+    /// folder, otherwise the workspace root — same rule as VS Code.
+    pub(crate) fn explorer_paste_target(&self) -> Option<PathBuf> {
+        self.selected_path
             .as_ref()
             .filter(|path| path.is_dir())
             .cloned()
@@ -2698,46 +3223,205 @@ impl Workspace {
                     .as_ref()
                     .and_then(|path| path.parent().map(Path::to_path_buf))
             })
-            .or_else(|| self.root.clone());
-        let Some(destination_dir) = destination_dir else {
+            .or_else(|| self.root.clone())
+    }
+
+    /// `report.md` pasted next to itself becomes `report copy.md`, then
+    /// `report copy 2.md`, matching VS Code's naming.
+    fn unique_copy_destination(directory: &Path, name: &std::ffi::OsStr) -> Option<PathBuf> {
+        let direct = directory.join(name);
+        if !direct.exists() {
+            return Some(direct);
+        }
+        let name = name.to_str()?;
+        let (stem, extension) = match name.rfind('.') {
+            // A leading dot is part of the name (`.gitignore`), not a suffix.
+            Some(ix) if ix > 0 => (&name[..ix], &name[ix..]),
+            _ => (name, ""),
+        };
+        for attempt in 1..1000 {
+            let candidate = if attempt == 1 {
+                format!("{stem} copy{extension}")
+            } else {
+                format!("{stem} copy {attempt}{extension}")
+            };
+            let candidate = directory.join(candidate);
+            if !candidate.exists() {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+
+    pub(crate) fn explorer_paste(&mut self, cx: &mut Context<Self>) {
+        let Some(clipboard) = self.explorer_clipboard.clone() else {
             return;
         };
+        let Some(destination_dir) = self.explorer_paste_target() else {
+            return;
+        };
+
         if clipboard.cut {
-            if self.move_entry(&clipboard.path, &destination_dir, cx) {
+            let mut moved = 0;
+            for path in &clipboard.paths {
+                if self.move_entry(path, &destination_dir, cx) {
+                    moved += 1;
+                }
+            }
+            if moved == clipboard.paths.len() {
                 self.explorer_clipboard = None;
             }
             return;
         }
-        if !self.path_in_workspace(&clipboard.path) || !clipboard.path.exists() {
-            self.status = "Cannot paste: the copied item is no longer available".into();
-            cx.notify();
-            return;
-        }
-        let Some(name) = clipboard.path.file_name() else {
-            return;
-        };
-        let destination = destination_dir.join(name);
-        if destination.exists() || is_same_or_descendant(&clipboard.path, &destination_dir) {
-            self.status = "Cannot paste: the destination already contains that item".into();
-            cx.notify();
-            return;
-        }
-        match Self::copy_entry_recursive(&clipboard.path, &destination) {
-            Ok(()) => {
-                self.reload_dir(&destination_dir, cx);
-                self.selected_path = Some(destination);
-                self.status = "Pasted explorer item".into();
+
+        let mut pasted: Vec<PathBuf> = Vec::new();
+        for source in &clipboard.paths {
+            if !self.path_in_workspace(source) || !source.exists() {
+                self.status = "Cannot paste: the copied item is no longer available".into();
+                continue;
             }
-            Err(error) => {
-                if destination.is_dir() {
-                    let _ = std::fs::remove_dir_all(&destination);
-                } else {
-                    let _ = std::fs::remove_file(&destination);
+            if is_same_or_descendant(source, &destination_dir) {
+                self.status = "Cannot paste a folder into itself".into();
+                continue;
+            }
+            let Some(name) = source.file_name() else {
+                continue;
+            };
+            let Some(destination) = Self::unique_copy_destination(&destination_dir, name) else {
+                self.status = "Cannot paste: too many copies with that name".into();
+                continue;
+            };
+            match Self::copy_entry_recursive(source, &destination) {
+                Ok(()) => pasted.push(destination),
+                Err(error) => {
+                    if destination.is_dir() {
+                        let _ = std::fs::remove_dir_all(&destination);
+                    } else {
+                        let _ = std::fs::remove_file(&destination);
+                    }
+                    self.status = format!("Could not paste: {error}");
                 }
-                self.status = format!("Could not paste: {error}");
             }
+        }
+
+        if !pasted.is_empty() {
+            self.ensure_directory_visible(&destination_dir);
+            self.reload_dir(&destination_dir, cx);
+            self.status = if pasted.len() == 1 {
+                format!("Pasted {}", display_name(&pasted[0]))
+            } else {
+                format!("Pasted {} items", pasted.len())
+            };
+            self.set_explorer_selection_many(pasted);
+            self.git_poke();
         }
         cx.notify();
+    }
+
+    /// VS Code's "Duplicate": copy next to the original as `name copy.ext`.
+    pub(crate) fn explorer_duplicate(&mut self, path: &Path, cx: &mut Context<Self>) {
+        if !self.path_in_workspace(path) || !path.exists() {
+            return;
+        }
+        let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
+            return;
+        };
+        let Some(destination) = Self::unique_copy_destination(parent, name) else {
+            self.status = "Could not duplicate: too many copies with that name".into();
+            cx.notify();
+            return;
+        };
+        match Self::copy_entry_recursive(path, &destination) {
+            Ok(()) => {
+                self.reload_dir(parent, cx);
+                self.status = format!("Duplicated to {}", display_name(&destination));
+                self.set_explorer_selection(destination);
+                self.git_poke();
+            }
+            Err(error) => self.status = format!("Could not duplicate: {error}"),
+        }
+        cx.notify();
+    }
+
+    /// VS Code's "Find in Folder…": jump to search, scoped to that folder.
+    pub(crate) fn explorer_find_in_folder(
+        &mut self,
+        path: &Path,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let directory = if path.is_dir() {
+            path.to_path_buf()
+        } else {
+            match path.parent() {
+                Some(parent) => parent.to_path_buf(),
+                None => return,
+            }
+        };
+        let relative = self
+            .root
+            .as_ref()
+            .and_then(|root| directory.strip_prefix(root).ok())
+            .unwrap_or(directory.as_path())
+            .to_string_lossy()
+            .into_owned();
+        let filter = if relative.is_empty() {
+            String::new()
+        } else {
+            format!("{relative}/**")
+        };
+
+        self.set_activity_explicit(Activity::Search, window, cx);
+        if let Some(input) = self.search_include_input.clone() {
+            input.update(cx, |state, cx| state.set_value(filter, window, cx));
+        }
+        self.focus_search_query(window, cx);
+        self.status = format!("Searching in {}", display_name(&directory));
+        cx.notify();
+    }
+
+    /// VS Code's "Open in Integrated Terminal".
+    pub(crate) fn explorer_open_in_terminal(
+        &mut self,
+        path: &Path,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let directory = if path.is_dir() {
+            path.to_path_buf()
+        } else {
+            match path.parent() {
+                Some(parent) => parent.to_path_buf(),
+                None => return,
+            }
+        };
+        self.new_terminal_in(Some(directory), window, cx);
+    }
+
+    pub(crate) fn toggle_explorer_sticky_scroll(&mut self, cx: &mut Context<Self>) {
+        self.explorer_sticky_scroll = !self.explorer_sticky_scroll;
+        if !self.explorer_sticky_scroll {
+            self.explorer_sticky_rows = 0;
+        }
+        self.status = if self.explorer_sticky_scroll {
+            "Explorer sticky scroll on".into()
+        } else {
+            "Explorer sticky scroll off".into()
+        };
+        self.persist_workspace_state(cx);
+        cx.notify();
+    }
+
+    /// Context-menu delete: deletes the whole selection when the clicked row
+    /// is part of it, otherwise just that row — VS Code's rule.
+    pub(crate) fn explorer_delete_action(&mut self, path: &Path, cx: &mut Context<Self>) {
+        let selection = self.explorer_selected_entries();
+        if selection.len() > 1 && selection.iter().any(|item| item == path) {
+            self.delete_selected_entries(cx);
+        } else {
+            self.delete_entry(path, cx);
+            cx.notify();
+        }
     }
 
     pub(crate) fn reveal_in_explorer(&mut self, path: &Path, cx: &mut Context<Self>) {
@@ -3910,6 +4594,13 @@ impl Workspace {
             if let Some(tab) = self.tabs.get_mut(index) {
                 tab.preview = false;
             }
+            // VS Code's `explorer.autoReveal`: the tree follows the active
+            // editor, expanding and scrolling to the file it belongs to.
+            if self.activity == Activity::Explorer {
+                if let Some(path) = self.tabs.get(index).and_then(|tab| tab.path.clone()) {
+                    self.reveal_tree_path(&path);
+                }
+            }
             self.persist_workspace_state(cx);
             cx.notify();
         }
@@ -4822,8 +5513,10 @@ impl Workspace {
                 show_terminal_right: self.show_terminal_right,
                 terminal_maximized: self.terminal_maximized,
                 activity: activity_str,
+                explorer_sticky_scroll: self.explorer_sticky_scroll,
             },
             expanded_folders: self.collect_expanded_folders(),
+            explorer_selected: self.selected_path.clone(),
         };
 
         let _ = state.save();

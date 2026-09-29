@@ -69,7 +69,9 @@ _Combining the raw speed and hardware-accelerated rendering of Zed with the frie
 - **Virtual Viewport (`uniform_list`)**: Virtualized rendering that scales to repositories with hundreds of thousands of files.
 - **Lazy Directory Loading**: Only reads directories on expansion; caches directory snapshots to avoid redundant disk I/O.
 - **Live Filesystem Watcher**: Instant UI updates when files are changed, created, or deleted externally (`notify`).
-- **Complete File Operations**: Inline creation of files and folders, inline rename (`F2`), safe drag-and-drop file moving with loop protection, copy/cut/paste, and auto-reveal for active files.
+- **Complete File Operations**: Inline creation of files and folders, inline rename (`F2`), safe drag-and-drop file moving with loop protection, copy/cut/paste/duplicate, and auto-reveal for active files.
+- **VS Code Sticky Scroll**: Parent folders of the rows you are looking at stay pinned to the top of the panel and slide out as their section ends, so context is never lost inside deeply nested trees.
+- **VS Code Tree Interactions**: Multi-selection (<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>-click, <kbd>Shift</kbd>-click, <kbd>Shift</kbd>+arrows), type-ahead jump, PageUp/PageDown, drag hover-to-expand with edge auto-scroll, indent guides with an active branch highlight, focus vs. selection styling, and a full context menu.
 
 ### 🎨 Zed-Compatible Themes & Typography
 
@@ -303,6 +305,12 @@ via `github-custom-runners`.
 | <kbd>F2</kbd>                                                | Rename File or Folder     |
 | <kbd>Delete</kbd>                                            | Delete File or Folder     |
 | <kbd>Ctrl</kbd> + <kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd> | Copy / Cut / Paste File   |
+| <kbd>Ctrl</kbd> + <kbd>A</kbd>                               | Select All Rows           |
+| <kbd>Shift</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd>               | Extend Selection          |
+| <kbd>PageUp</kbd> / <kbd>PageDown</kbd>                      | Jump a Viewport           |
+| <kbd>Home</kbd> / <kbd>End</kbd>                             | First / Last Row          |
+| Type a Name                                                  | Jump to Matching Row      |
+| <kbd>Esc</kbd>                                               | Collapse Multi-Selection  |
 
 ---
 

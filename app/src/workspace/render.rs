@@ -125,9 +125,26 @@ impl Render for Workspace {
         let terminal_right_w = self.terminal_right_width;
         let panel_resize = self.panel_resize;
 
+        // Sticky headers are *not* computed here on purpose: they are a
+        // decoration of the explorer's uniform list and are computed during
+        // its prepaint, from the scroll offset the list has already clamped.
+        // Reading the offset from render — a frame behind, and unclamped at
+        // the ends of the list — is what used to make the tree shake when
+        // scrolling into the bottom.
+        let explorer_selection = self.explorer_selected_entries();
+        let explorer_cut_paths = self
+            .explorer_clipboard
+            .as_ref()
+            .filter(|clipboard| clipboard.cut)
+            .map(|clipboard| clipboard.paths.clone())
+            .unwrap_or_default();
+        let explorer_tree_focused = self.explorer_focus_handle.is_focused(window);
+        let explorer_sticky_enabled = self.explorer_sticky_scroll;
+
         let explorer_rows = &self.explorer_rows;
         let explorer_scroll_handle = self.explorer_scroll_handle.clone();
         let explorer_focus_handle = self.explorer_focus_handle.clone();
+        let explorer_drag_target = self.explorer_drag_target.as_ref();
 
         let open = self.active_path().cloned();
         let selected_path = self.selected_path.as_ref();
@@ -351,7 +368,23 @@ impl Render for Workspace {
                 this.start_inline_rename(action.path.clone(), window, cx);
             }))
             .on_action(cx.listener(|this, action: &ExplorerDelete, _, cx| {
-                this.delete_entry(&action.path, cx);
+                this.explorer_delete_action(&action.path, cx);
+            }))
+            .on_action(cx.listener(|this, action: &ExplorerDuplicate, _, cx| {
+                this.explorer_duplicate(&action.path, cx);
+            }))
+            .on_action(
+                cx.listener(|this, action: &ExplorerFindInFolder, window, cx| {
+                    this.explorer_find_in_folder(&action.path, window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|this, action: &ExplorerOpenInTerminal, window, cx| {
+                    this.explorer_open_in_terminal(&action.path, window, cx);
+                }),
+            )
+            .on_action(cx.listener(|this, _: &ExplorerToggleStickyScroll, _, cx| {
+                this.toggle_explorer_sticky_scroll(cx);
             }))
             .on_action(cx.listener(|this, _: &ExplorerCut, _, cx| {
                 this.explorer_cut(cx);
@@ -516,17 +549,24 @@ impl Render for Workspace {
                                 .child(match activity {
                                     Activity::Explorer => match root_opt {
                                         Some(root) => ui::sidebar::explorer::render_tree(
-                                            explorer_rows.clone(),
-                                            explorer_scroll_handle.clone(),
-                                            explorer_focus_handle.clone(),
-                                            Some(root.as_path()),
-                                            open.as_ref(),
-                                            selected_path,
-                                            explorer_section_expanded,
-                                            inline_creating,
-                                            inline_renaming,
-                                            root_display_shared,
-                                            git_path_kinds.clone(),
+                                            ui::sidebar::explorer::ExplorerView {
+                                                rows: explorer_rows.clone(),
+                                                scroll_handle: explorer_scroll_handle.clone(),
+                                                focus_handle: explorer_focus_handle.clone(),
+                                                root_path: Some(root.as_path()),
+                                                open: open.as_ref(),
+                                                focused: selected_path,
+                                                selection: &explorer_selection,
+                                                cut_paths: &explorer_cut_paths,
+                                                drag_target: explorer_drag_target,
+                                                tree_focused: explorer_tree_focused,
+                                                sticky_enabled: explorer_sticky_enabled,
+                                                section_expanded: explorer_section_expanded,
+                                                inline_creating,
+                                                inline_renaming,
+                                                folder: root_display_shared,
+                                                git_map: git_path_kinds.clone(),
+                                            },
                                             &t,
                                             cx,
                                         ),
