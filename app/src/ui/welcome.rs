@@ -9,13 +9,6 @@ use crate::ui::app_icon;
 use crate::workspace::Workspace;
 
 pub(crate) fn render_welcome(t: &Colors, cx: &mut Context<Workspace>) -> impl IntoElement {
-    let global_state = GlobalState::load();
-    let recent_folders: Vec<_> = global_state
-        .recent_folders
-        .into_iter()
-        .filter(|p| p.exists())
-        .collect();
-
     div()
         .flex_1()
         .min_h(px(0.0))
@@ -36,92 +29,16 @@ pub(crate) fn render_welcome(t: &Colors, cx: &mut Context<Workspace>) -> impl In
         .child(welcome_button(
             "Quick Open File (Ctrl+P)",
             true,
+            Some((0x222222ff, 0x2f2f2fff)),
             t,
             cx.listener(|this, _, window, cx| this.toggle_file_finder(window, cx)),
         ))
-        .child(welcome_button(
-            "Open Folder",
-            false,
-            t,
-            cx.listener(|this, _, window, cx| this.open_folder_dialog(window, cx)),
-        ))
-        .child(welcome_button(
-            "Open File",
-            false,
-            t,
-            cx.listener(|this, _, window, cx| this.open_file_dialog(window, cx)),
-        ))
-        .child(welcome_button(
-            "New File",
-            false,
-            t,
-            cx.listener(|this, _, window, cx| this.new_file(window, cx)),
-        ))
-        .when(!recent_folders.is_empty(), |el| {
-            el.child(
-                div()
-                    .w(px(260.0))
-                    .pt(px(12.0))
-                    .flex()
-                    .flex_col()
-                    .gap(px(6.0))
-                    .child(
-                        div()
-                            .px(px(4.0))
-                            .text_size(px(12.0))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgba(t.text_muted))
-                            .child(SharedString::from("Recent Folders")),
-                    )
-                    .children(recent_folders.into_iter().take(5).map(|path| {
-                        let path_clone = path.clone();
-                        let folder_name = path
-                            .file_name()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("Folder")
-                            .to_string();
-                        let display_path = path.to_string_lossy().to_string();
-
-                        div()
-                            .id(SharedString::from(format!("recent-{}", display_path)))
-                            .w_full()
-                            .flex()
-                            .flex_col()
-                            .px(px(8.0))
-                            .py(px(5.0))
-                            .rounded(px(4.0))
-                            .bg(rgba(t.element_bg))
-                            .border_1()
-                            .border_color(rgba(t.border))
-                            .hover(|s| s.bg(rgba(t.element_hover)))
-                            .cursor_pointer()
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.load_root(path_clone.clone(), cx);
-                            }))
-                            .child(
-                                div()
-                                    .text_size(px(13.0))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(rgba(t.text))
-                                    .child(SharedString::from(folder_name)),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .text_color(rgba(t.text_muted))
-                                    .overflow_hidden()
-                                    .text_ellipsis()
-                                    .whitespace_nowrap()
-                                    .child(SharedString::from(display_path)),
-                            )
-                    })),
-            )
-        })
 }
 
 fn welcome_button(
     label: &'static str,
     primary: bool,
+    bg_override: Option<(u32, u32)>,
     t: &Colors,
     on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
@@ -135,12 +52,20 @@ fn welcome_button(
         .rounded(px(4.0))
         .cursor_pointer()
         .text_size(px(13.0))
-        .when(primary, |d| {
+        .when_some(bg_override, |d, (bg, hover)| {
+            d.bg(rgba(bg))
+                .border_1()
+                .border_color(rgba(0x3e3e3eff))
+                .text_color(rgba(0xffffffff))
+                .font_weight(FontWeight::MEDIUM)
+                .hover(move |s| s.bg(rgba(hover)).border_color(rgba(0x4e4e4eff)))
+        })
+        .when(bg_override.is_none() && primary, |d| {
             d.bg(rgba(t.border_focused))
                 .text_color(rgba(t.background))
                 .hover(|s| s.bg(rgba(t.icon_accent)))
         })
-        .when(!primary, |d| {
+        .when(bg_override.is_none() && !primary, |d| {
             d.bg(rgba(t.element_bg))
                 .border_1()
                 .border_color(rgba(t.border))
@@ -178,6 +103,7 @@ pub(crate) fn render_no_folder_panel(t: &Colors, cx: &mut Context<Workspace>) ->
         .child(welcome_button(
             "Open Folder",
             true,
+            None,
             t,
             cx.listener(|this, _, window, cx| this.open_folder_dialog(window, cx)),
         ))
