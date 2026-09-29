@@ -1425,37 +1425,30 @@ impl Workspace {
         Entity<crate::terminal::Terminal>,
     )> {
         self.focused_terminal(window, cx).or_else(|| {
-            self.terminal_tabs.get(self.active_terminal).cloned().map(|term| {
-                (
-                    crate::terminal::TerminalDock::Bottom,
-                    self.active_terminal,
-                    term,
-                )
-            })
+            self.terminal_tabs
+                .get(self.active_terminal)
+                .cloned()
+                .map(|term| {
+                    (
+                        crate::terminal::TerminalDock::Bottom,
+                        self.active_terminal,
+                        term,
+                    )
+                })
         })
     }
 
-    pub(crate) fn close_focused_terminal(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn close_focused_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some((dock, index, _)) = self.focused_or_active_terminal(window, cx) else {
             return;
         };
         match dock {
             crate::terminal::TerminalDock::Bottom => self.close_terminal(index, window, cx),
-            crate::terminal::TerminalDock::Right => {
-                self.close_terminal_right(index, window, cx)
-            }
+            crate::terminal::TerminalDock::Right => self.close_terminal_right(index, window, cx),
         }
     }
 
-    pub(crate) fn copy_focused_terminal(
-        &mut self,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn copy_focused_terminal(&mut self, window: &Window, cx: &mut Context<Self>) {
         let Some((_, _, terminal)) = self.focused_terminal(window, cx) else {
             return;
         };
@@ -1469,11 +1462,7 @@ impl Workspace {
         cx.notify();
     }
 
-    pub(crate) fn paste_focused_terminal(
-        &mut self,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn paste_focused_terminal(&mut self, window: &Window, cx: &mut Context<Self>) {
         let Some((_, _, terminal)) = self.focused_terminal(window, cx) else {
             return;
         };
@@ -1493,11 +1482,7 @@ impl Workspace {
         cx.notify();
     }
 
-    pub(crate) fn select_all_focused_terminal(
-        &mut self,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn select_all_focused_terminal(&mut self, window: &Window, cx: &mut Context<Self>) {
         let Some((_, _, terminal)) = self.focused_terminal(window, cx) else {
             return;
         };
@@ -1507,11 +1492,7 @@ impl Workspace {
         cx.notify();
     }
 
-    pub(crate) fn clear_focused_terminal(
-        &mut self,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn clear_focused_terminal(&mut self, window: &Window, cx: &mut Context<Self>) {
         let Some((_, _, terminal)) = self.focused_terminal(window, cx) else {
             return;
         };

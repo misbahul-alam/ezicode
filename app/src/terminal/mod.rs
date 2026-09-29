@@ -495,11 +495,7 @@ pub fn render_terminal_panel(
                                 menu.action_context(action_context.clone())
                                     .menu("New Terminal", Box::new(NewTerminal))
                                     .separator()
-                                    .menu_with_enable(
-                                        "Copy",
-                                        Box::new(TerminalCopy),
-                                        has_selection,
-                                    )
+                                    .menu_with_enable("Copy", Box::new(TerminalCopy), has_selection)
                                     .menu_with_enable(
                                         "Paste",
                                         Box::new(TerminalPaste),
