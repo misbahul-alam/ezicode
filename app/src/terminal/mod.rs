@@ -5,9 +5,14 @@ use gpui::{
     div, prelude::*, px, rgba, svg, Context, Edges, Entity, FocusHandle, IntoElement, ScrollHandle,
     SharedString, Window,
 };
+use gpui_component::menu::ContextMenuExt;
 use gpui_terminal::{TerminalConfig, TerminalView};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
+use crate::actions::{
+    AddTerminalSelectionToAgentThread, ClearTerminal, CloseTerminal, NewCenterTerminal,
+    NewTerminal, TerminalCopy, TerminalPaste, TerminalPasteText, TerminalSelectAll,
+};
 use crate::assets::MONO_FONT;
 use crate::theme::Colors;
 use crate::workspace::Workspace;
@@ -127,6 +132,7 @@ impl Terminal {
                     line_height_multiplier: 1.2,
                     padding: Edges::all(px(6.0)),
                     colors: palette,
+                    right_click_paste: false,
                     ..TerminalConfig::default()
                 };
                 let (dummy_reader, dummy_writer) = Self::create_dummy_pty();
@@ -172,6 +178,7 @@ impl Terminal {
                     line_height_multiplier: 1.2,
                     padding: Edges::all(px(6.0)),
                     colors: palette,
+                    right_click_paste: false,
                     ..TerminalConfig::default()
                 };
                 let (dummy_reader, dummy_writer) = Self::create_dummy_pty();
@@ -210,6 +217,7 @@ impl Terminal {
             colors: palette,
             cursor_blink: true,
             copy_on_select: false,
+            right_click_paste: false,
             alternate_scroll: true,
             detect_path_links: true,
             show_scrollbar: true,
@@ -447,10 +455,11 @@ pub fn render_terminal_panel(
     t: &Colors,
     cx: &mut Context<Workspace>,
 ) -> impl IntoElement {
-    let active_view = tabs
-        .get(active)
-        .map(|term| term.read(cx).view.clone())
-        .or_else(|| tabs.first().map(|term| term.read(cx).view.clone()));
+    let active_terminal = tabs.get(active).or_else(|| tabs.first()).cloned();
+    let active_view = active_terminal.as_ref().map(|term| {
+        let term = term.read(cx);
+        (term.view.clone(), term.state)
+    });
 
     div()
         .size_full()
@@ -467,7 +476,57 @@ pub fn render_terminal_panel(
                 .min_h(px(0.0))
                 .overflow_hidden()
                 .bg(rgba(TAB_BAR_BG))
-                .when_some(active_view, |d, view| d.child(view)),
+                .when_some(active_view, |d, (view, state)| {
+                    let menu_view = view.clone();
+                    let action_context = view.read(cx).focus_handle().clone();
+                    d.child(
+                        div()
+                            .id(dock.namespaced("terminal-context-surface"))
+                            .size_full()
+                            .child(view)
+                            .context_menu(move |menu, _window, cx| {
+                                let has_selection = menu_view.read(cx).has_selection();
+                                let has_clipboard_text = cx
+                                    .read_from_clipboard()
+                                    .and_then(|item| item.text())
+                                    .is_some();
+                                let writable = state == TerminalState::Running;
+
+                                menu.action_context(action_context.clone())
+                                    .menu("New Terminal", Box::new(NewTerminal))
+                                    .menu("New Center Terminal", Box::new(NewCenterTerminal))
+                                    .separator()
+                                    .menu_with_enable(
+                                        "Copy",
+                                        Box::new(TerminalCopy),
+                                        has_selection,
+                                    )
+                                    .menu_with_enable(
+                                        "Paste",
+                                        Box::new(TerminalPaste),
+                                        writable && has_clipboard_text,
+                                    )
+                                    .menu_with_enable(
+                                        "Paste Text",
+                                        Box::new(TerminalPasteText),
+                                        writable && has_clipboard_text,
+                                    )
+                                    .menu("Select All", Box::new(TerminalSelectAll))
+                                    .menu("Clear", Box::new(ClearTerminal))
+                                    .separator()
+                                    // EziCode does not yet have an Agent Thread surface. Keep
+                                    // Zed's command discoverable, but disabled rather than
+                                    // pretending to send the selection somewhere.
+                                    .menu_with_enable(
+                                        "Add to Agent Thread",
+                                        Box::new(AddTerminalSelectionToAgentThread),
+                                        false,
+                                    )
+                                    .separator()
+                                    .menu("Close Terminal Tab", Box::new(CloseTerminal))
+                            }),
+                    )
+                }),
         )
 }
 

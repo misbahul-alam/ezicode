@@ -53,6 +53,18 @@ actions!(
         PrevTerminal,
         CloseTerminal,
         ClearTerminal,
+        /// Copy the active terminal selection.
+        TerminalCopy,
+        /// Paste the current clipboard payload into the active terminal.
+        TerminalPaste,
+        /// Paste only the clipboard's text representation.
+        TerminalPasteText,
+        /// Select the active terminal's complete scrollback.
+        TerminalSelectAll,
+        /// Create a terminal in the center/bottom terminal surface.
+        NewCenterTerminal,
+        /// Forward a terminal selection to the agent panel when available.
+        AddTerminalSelectionToAgentThread,
         TerminalTab1,
         TerminalTab2,
         TerminalTab3,

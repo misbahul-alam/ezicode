@@ -1170,6 +1170,30 @@ impl Workspace {
         self.new_terminal_in(None, window, cx);
     }
 
+    /// Create beside the terminal that owns focus. This keeps the global
+    /// shortcut and the context-menu action useful in either terminal dock.
+    pub(crate) fn new_terminal_for_focused_dock(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self
+            .focused_terminal(window, cx)
+            .is_some_and(|(dock, _, _)| dock == crate::terminal::TerminalDock::Right)
+        {
+            self.new_terminal_right(window, cx);
+        } else {
+            self.new_terminal(window, cx);
+        }
+    }
+
+    /// EziCode's editor area cannot host a terminal tab, so its center-terminal
+    /// equivalent is the main bottom terminal surface rather than the optional
+    /// right dock. This preserves the existing terminal/tab architecture.
+    pub(crate) fn new_center_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.new_terminal(window, cx);
+    }
+
     /// Open a terminal, optionally rooted at a specific directory (the
     /// explorer's "Open in Integrated Terminal").
     pub(crate) fn new_terminal_in(
@@ -1355,6 +1379,153 @@ impl Workspace {
         }
         let idx = self.active_terminal;
         self.close_terminal(idx, window, cx);
+    }
+
+    /// Return the terminal whose view currently owns focus. Context menus put
+    /// focus back on their action context before dispatch, so this also routes
+    /// menu commands to the exact dock from which the menu was opened.
+    fn focused_terminal(
+        &self,
+        window: &Window,
+        cx: &gpui::App,
+    ) -> Option<(
+        crate::terminal::TerminalDock,
+        usize,
+        Entity<crate::terminal::Terminal>,
+    )> {
+        for (index, terminal) in self.terminal_right_tabs.iter().enumerate() {
+            if terminal
+                .read(cx)
+                .focus_handle(cx)
+                .contains_focused(window, cx)
+            {
+                return Some((
+                    crate::terminal::TerminalDock::Right,
+                    index,
+                    terminal.clone(),
+                ));
+            }
+        }
+        for (index, terminal) in self.terminal_tabs.iter().enumerate() {
+            if terminal
+                .read(cx)
+                .focus_handle(cx)
+                .contains_focused(window, cx)
+            {
+                return Some((
+                    crate::terminal::TerminalDock::Bottom,
+                    index,
+                    terminal.clone(),
+                ));
+            }
+        }
+        None
+    }
+
+    fn focused_or_active_terminal(
+        &self,
+        window: &Window,
+        cx: &gpui::App,
+    ) -> Option<(
+        crate::terminal::TerminalDock,
+        usize,
+        Entity<crate::terminal::Terminal>,
+    )> {
+        self.focused_terminal(window, cx).or_else(|| {
+            self.terminal_tabs.get(self.active_terminal).cloned().map(|term| {
+                (
+                    crate::terminal::TerminalDock::Bottom,
+                    self.active_terminal,
+                    term,
+                )
+            })
+        })
+    }
+
+    pub(crate) fn close_focused_terminal(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((dock, index, _)) = self.focused_or_active_terminal(window, cx) else {
+            return;
+        };
+        match dock {
+            crate::terminal::TerminalDock::Bottom => self.close_terminal(index, window, cx),
+            crate::terminal::TerminalDock::Right => {
+                self.close_terminal_right(index, window, cx)
+            }
+        }
+    }
+
+    pub(crate) fn copy_focused_terminal(
+        &mut self,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((_, _, terminal)) = self.focused_terminal(window, cx) else {
+            return;
+        };
+        let view = terminal.read(cx).view.clone();
+        let copied = view.update(cx, |view, cx| view.copy_selection(cx));
+        self.status = if copied {
+            "Terminal selection copied".into()
+        } else {
+            "No terminal selection to copy".into()
+        };
+        cx.notify();
+    }
+
+    pub(crate) fn paste_focused_terminal(
+        &mut self,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((_, _, terminal)) = self.focused_terminal(window, cx) else {
+            return;
+        };
+        if terminal.read(cx).state != crate::terminal::TerminalState::Running {
+            self.status = "Cannot paste into an exited terminal".into();
+            cx.notify();
+            return;
+        }
+        let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
+            self.status = "Clipboard does not contain text".into();
+            cx.notify();
+            return;
+        };
+        let view = terminal.read(cx).view.clone();
+        view.update(cx, |view, cx| view.paste_text(&text, cx));
+        self.status = "Pasted into terminal".into();
+        cx.notify();
+    }
+
+    pub(crate) fn select_all_focused_terminal(
+        &mut self,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((_, _, terminal)) = self.focused_terminal(window, cx) else {
+            return;
+        };
+        let view = terminal.read(cx).view.clone();
+        view.update(cx, |view, cx| view.select_all(cx));
+        self.status = "Terminal contents selected".into();
+        cx.notify();
+    }
+
+    pub(crate) fn clear_focused_terminal(
+        &mut self,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((_, _, terminal)) = self.focused_terminal(window, cx) else {
+            return;
+        };
+        let view = terminal.read(cx).view.clone();
+        view.update(cx, |view, cx| view.clear(cx));
+        self.status = "Terminal cleared".into();
+        cx.notify();
     }
 
     pub(crate) fn switch_terminal_tab_to(

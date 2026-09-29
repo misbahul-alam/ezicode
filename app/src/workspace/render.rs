@@ -295,7 +295,10 @@ impl Render for Workspace {
                 this.toggle_terminal(window, cx);
             }))
             .on_action(cx.listener(|this, _: &NewTerminal, window, cx| {
-                this.new_terminal(window, cx);
+                this.new_terminal_for_focused_dock(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &NewCenterTerminal, window, cx| {
+                this.new_center_terminal(window, cx);
             }))
             .on_action(cx.listener(|this, _: &ToggleTerminalRight, window, cx| {
                 this.toggle_terminal_right(window, cx);
@@ -307,7 +310,7 @@ impl Render for Workspace {
                 this.prev_terminal_tab(window, cx);
             }))
             .on_action(cx.listener(|this, _: &CloseTerminal, window, cx| {
-                this.close_active_terminal(window, cx);
+                this.close_focused_terminal(window, cx);
             }))
             .on_action(cx.listener(|this, _: &TerminalTab1, window, cx| {
                 this.switch_terminal_tab_to(0, window, cx);
@@ -324,9 +327,27 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &TerminalTab5, window, cx| {
                 this.switch_terminal_tab_to(4, window, cx);
             }))
-            .on_action(cx.listener(|this, _: &ClearTerminal, _window, cx| {
-                this.clear_active_terminal(cx);
+            .on_action(cx.listener(|this, _: &TerminalCopy, window, cx| {
+                this.copy_focused_terminal(window, cx);
             }))
+            .on_action(cx.listener(|this, _: &TerminalPaste, window, cx| {
+                this.paste_focused_terminal(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &TerminalPasteText, window, cx| {
+                this.paste_focused_terminal(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &TerminalSelectAll, window, cx| {
+                this.select_all_focused_terminal(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &ClearTerminal, window, cx| {
+                this.clear_focused_terminal(window, cx);
+            }))
+            .on_action(cx.listener(
+                |this, _: &AddTerminalSelectionToAgentThread, _window, cx| {
+                    this.status = "Agent Thread is not available in EziCode".into();
+                    cx.notify();
+                },
+            ))
             .on_action(cx.listener(|this, _: &NewFile, window, cx| this.new_file(window, cx)))
             .on_action(cx.listener(|this, _: &OpenFile, window, cx| {
                 this.open_file_dialog(window, cx);
