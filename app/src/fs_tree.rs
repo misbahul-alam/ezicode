@@ -146,11 +146,201 @@ pub fn flatten_visible(nodes: &[TreeNode], depth: usize, out: &mut Vec<VisibleTr
     }
 }
 
+/// Last row index belonging to the subtree rooted at `index` (the row itself
+/// when it is a file or a collapsed/empty folder). Used by sticky scroll to
+/// know where a folder's section ends, exactly like VS Code's
+/// `getLastDescendant`.
+pub fn subtree_end(rows: &[VisibleTreeRow], index: usize) -> usize {
+    let Some(start) = rows.get(index) else {
+        return index;
+    };
+    let depth = start.depth;
+    let mut end = index;
+    for (ix, row) in rows.iter().enumerate().skip(index + 1) {
+        if row.depth <= depth {
+            break;
+        }
+        end = ix;
+    }
+    end
+}
+
+/// Indices of every rendered ancestor of `index`, ordered root-first.
+pub fn ancestor_chain(rows: &[VisibleTreeRow], index: usize) -> Vec<usize> {
+    let mut out = Vec::new();
+    let Some(row) = rows.get(index) else {
+        return out;
+    };
+    let mut depth = row.depth;
+    let mut ix = index;
+    while depth > 0 && ix > 0 {
+        ix -= 1;
+        if rows[ix].depth < depth {
+            depth = rows[ix].depth;
+            out.push(ix);
+        }
+    }
+    out.reverse();
+    out
+}
+
+/// The sticky ("scroll") header stack VS Code paints over the top of the tree:
+/// the ancestor folders of the first row under the widget, plus the vertical
+/// shift applied while one section is being pushed out by the next.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct StickyLayout {
+    /// Row indices to pin, root-first.
+    pub rows: Vec<usize>,
+    /// Pixels the whole stack is nudged upwards so the last sticky row slides
+    /// away as its section scrolls past, instead of popping.
+    pub shift: f32,
+}
+
+impl StickyLayout {
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+
+    /// Height in pixels actually covered by the widget.
+    pub fn height(&self, row_height: f32) -> f32 {
+        (self.rows.len() as f32 * row_height - self.shift).max(0.0)
+    }
+}
+
+/// Compute the sticky header stack for a scroll position.
+///
+/// `scroll_top` is the distance in pixels between the top of the content and
+/// the top of the viewport. A folder is pinned only while its own row is
+/// scrolled behind the widget, and the stack is capped at `max_rows` lines
+/// (VS Code's `workbench.tree.stickyScrollMaxItemCount`, default 7).
+pub fn sticky_layout(
+    rows: &[VisibleTreeRow],
+    scroll_top: f32,
+    row_height: f32,
+    max_rows: usize,
+) -> StickyLayout {
+    let mut layout = StickyLayout::default();
+    if rows.is_empty() || row_height <= 0.0 || max_rows == 0 || scroll_top <= 0.0 {
+        return layout;
+    }
+
+    // Pinned rows are the ancestors of the row sitting at the top of the
+    // viewport. A taller widget can uncover deeper rows, so the stack is then
+    // refined downwards — but only ever by *growing* it, which keeps the
+    // result stable (no flicker) while scrolling.
+    let candidates = |probe: usize, limit: usize| -> Vec<usize> {
+        let mut out: Vec<usize> = Vec::new();
+        for ix in ancestor_chain(rows, probe) {
+            if out.len() >= limit {
+                break;
+            }
+            // Only pin ancestors whose real row is already hidden behind the
+            // widget; a parent still visible on its own needs no sticky copy.
+            let row_top = ix as f32 * row_height;
+            let slot_top = scroll_top + out.len() as f32 * row_height;
+            if row_top < slot_top - 0.01 {
+                out.push(ix);
+            } else {
+                break;
+            }
+        }
+        out
+    };
+
+    let top_row = ((scroll_top / row_height).floor() as usize).min(rows.len() - 1);
+    let mut pinned = candidates(top_row, max_rows);
+    for _ in 0..max_rows {
+        if pinned.len() >= max_rows {
+            break;
+        }
+        let probe_y = scroll_top + pinned.len() as f32 * row_height;
+        let probe = ((probe_y / row_height).floor() as usize).min(rows.len() - 1);
+        let next = candidates(probe, max_rows);
+        if next.len() > pinned.len() && next.starts_with(&pinned) {
+            pinned = next;
+        } else {
+            break;
+        }
+    }
+
+    if pinned.is_empty() {
+        return layout;
+    }
+
+    // Slide the stack up while the innermost pinned section runs out, so the
+    // outgoing folder is pushed away by the next one instead of blinking.
+    let last_slot = pinned.len() - 1;
+    let last = pinned[last_slot];
+    let section_bottom = (subtree_end(rows, last) + 1) as f32 * row_height - scroll_top;
+    let slot_bottom = (last_slot + 1) as f32 * row_height;
+    if section_bottom < slot_bottom {
+        layout.shift = (slot_bottom - section_bottom).clamp(0.0, row_height);
+    }
+    layout.rows = pinned;
+    layout
+}
+
+/// Next row whose name starts with `query`, searching forward from `start` and
+/// wrapping around — VS Code's list type-ahead.
+pub fn type_ahead_index(rows: &[VisibleTreeRow], start: usize, query: &str) -> Option<usize> {
+    if rows.is_empty() || query.is_empty() {
+        return None;
+    }
+    let needle = query.to_lowercase();
+    let len = rows.len();
+    for offset in 0..len {
+        let ix = (start + offset) % len;
+        if rows[ix].name.to_lowercase().starts_with(&needle) {
+            return Some(ix);
+        }
+    }
+    None
+}
+
 pub fn collapse_all(nodes: &mut [TreeNode]) {
     for node in nodes {
         node.expanded = false;
         collapse_all(&mut node.children);
     }
+}
+
+/// Expand or collapse every directory in `nodes` (Alt+click on a twistie in
+/// VS Code). Directories whose children were never read are reported through
+/// `needs_load` so the caller can fetch them off the UI thread.
+pub fn set_expanded_recursive(
+    nodes: &mut [TreeNode],
+    expanded: bool,
+    needs_load: &mut Vec<PathBuf>,
+) {
+    for node in nodes {
+        if !node.is_dir {
+            continue;
+        }
+        node.expanded = expanded;
+        if expanded && !node.children_loaded {
+            needs_load.push(node.path.clone());
+        }
+        set_expanded_recursive(&mut node.children, expanded, needs_load);
+    }
+}
+
+/// Run `f` on the node at `path`, walking only the branch that can contain it.
+pub fn with_node_mut<R>(
+    nodes: &mut [TreeNode],
+    path: &Path,
+    f: &mut dyn FnMut(&mut TreeNode) -> R,
+) -> Option<R> {
+    for node in nodes {
+        if node.path == path {
+            return Some(f(node));
+        }
+        if node.is_dir && path.starts_with(&node.path) {
+            if let Some(result) = with_node_mut(&mut node.children, path, &mut *f) {
+                return Some(result);
+            }
+        }
+    }
+    None
 }
 
 pub fn display_name(p: &Path) -> String {
@@ -243,6 +433,132 @@ mod tests {
             path_after_move(Path::new("/project/src2/main.rs"), source, destination),
             None
         );
+    }
+
+    fn row(name: &str, depth: usize, is_dir: bool) -> VisibleTreeRow {
+        VisibleTreeRow {
+            name: name.to_string(),
+            path: PathBuf::from(format!("/p/{name}")),
+            is_dir,
+            expanded: is_dir,
+            depth,
+        }
+    }
+
+    /// src/            0
+    ///   ui/           1
+    ///     a.rs        2
+    ///     b.rs        2
+    ///   main.rs       1
+    /// README.md       0
+    fn sample_rows() -> Vec<VisibleTreeRow> {
+        vec![
+            row("src", 0, true),
+            row("ui", 1, true),
+            row("a.rs", 2, false),
+            row("b.rs", 2, false),
+            row("main.rs", 1, false),
+            row("README.md", 0, false),
+        ]
+    }
+
+    #[test]
+    fn subtree_end_covers_all_descendants() {
+        let rows = sample_rows();
+        assert_eq!(subtree_end(&rows, 0), 4);
+        assert_eq!(subtree_end(&rows, 1), 3);
+        assert_eq!(subtree_end(&rows, 2), 2);
+        assert_eq!(subtree_end(&rows, 5), 5);
+    }
+
+    #[test]
+    fn ancestors_are_reported_root_first() {
+        let rows = sample_rows();
+        assert_eq!(ancestor_chain(&rows, 3), vec![0, 1]);
+        assert_eq!(ancestor_chain(&rows, 4), vec![0]);
+        assert!(ancestor_chain(&rows, 0).is_empty());
+    }
+
+    #[test]
+    fn nothing_sticks_at_the_top_of_the_list() {
+        let rows = sample_rows();
+        assert!(sticky_layout(&rows, 0.0, 22.0, 7).is_empty());
+    }
+
+    #[test]
+    fn scrolled_rows_pin_their_parent_chain() {
+        let rows = sample_rows();
+        // Scrolled so that `a.rs` (index 2) is the first visible row: both
+        // `src` and `ui` are hidden above, so both pin.
+        let layout = sticky_layout(&rows, 44.0, 22.0, 7);
+        assert_eq!(layout.rows, vec![0, 1]);
+        assert_eq!(layout.shift, 0.0);
+    }
+
+    #[test]
+    fn the_stack_grows_with_the_widget_like_vs_code() {
+        let rows = sample_rows();
+        // `src` scrolled out, so it pins; the widget then covers `ui`, whose
+        // child is the first row below it, so `ui` pins too — exactly how
+        // VS Code appends sticky rows one at a time.
+        let layout = sticky_layout(&rows, 22.0, 22.0, 7);
+        assert_eq!(layout.rows, vec![0, 1]);
+
+        // A file at the root level has no parents to pin.
+        let flat = vec![row("a.rs", 0, false), row("b.rs", 0, false)];
+        assert!(sticky_layout(&flat, 22.0, 22.0, 7).is_empty());
+    }
+
+    #[test]
+    fn the_stack_is_capped_and_slides_out_with_its_section() {
+        let rows = sample_rows();
+        let capped = sticky_layout(&rows, 44.0, 22.0, 1);
+        assert_eq!(capped.rows, vec![0]);
+
+        // Half a row past the end of the `ui` section: the `ui` header is
+        // being pushed up out of the widget rather than vanishing.
+        let sliding = sticky_layout(&rows, 44.0 + 11.0, 22.0, 7);
+        assert_eq!(sliding.rows, vec![0, 1]);
+        assert!(sliding.shift > 0.0 && sliding.shift <= 22.0);
+        assert!(sliding.height(22.0) < 44.0);
+    }
+
+    #[test]
+    fn type_ahead_wraps_around_and_ignores_case() {
+        let rows = sample_rows();
+        assert_eq!(type_ahead_index(&rows, 0, "re"), Some(5));
+        assert_eq!(type_ahead_index(&rows, 3, "SRC"), Some(0));
+        assert_eq!(type_ahead_index(&rows, 0, "zz"), None);
+    }
+
+    #[test]
+    fn recursive_expand_reports_unloaded_directories() {
+        let mut nodes = vec![TreeNode {
+            name: "src".into(),
+            path: PathBuf::from("/tmp/src"),
+            is_dir: true,
+            expanded: false,
+            children_loaded: true,
+            children: vec![TreeNode {
+                name: "ui".into(),
+                path: PathBuf::from("/tmp/src/ui"),
+                is_dir: true,
+                expanded: false,
+                children_loaded: false,
+                children: Vec::new(),
+            }],
+        }];
+        let mut needs_load = Vec::new();
+        set_expanded_recursive(&mut nodes, true, &mut needs_load);
+        assert!(nodes[0].expanded);
+        assert!(nodes[0].children[0].expanded);
+        assert_eq!(needs_load, vec![PathBuf::from("/tmp/src/ui")]);
+
+        needs_load.clear();
+        set_expanded_recursive(&mut nodes, false, &mut needs_load);
+        assert!(!nodes[0].expanded);
+        assert!(!nodes[0].children[0].expanded);
+        assert!(needs_load.is_empty());
     }
 
     #[test]

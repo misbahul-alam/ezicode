@@ -125,9 +125,43 @@ impl Render for Workspace {
         let terminal_right_w = self.terminal_right_width;
         let panel_resize = self.panel_resize;
 
+        // Sticky scroll is computed here, before the panel borrows any state:
+        // it needs the scroll offset the list committed last frame, and the
+        // row count feeds back into keyboard scrolling.
+        let explorer_sticky = if self.explorer_sticky_scroll && self.explorer_section_expanded {
+            let scroll_top = f32::from(
+                -self
+                    .explorer_scroll_handle
+                    .0
+                    .borrow()
+                    .base_handle
+                    .offset()
+                    .y,
+            );
+            crate::fs_tree::sticky_layout(
+                &self.explorer_rows,
+                scroll_top,
+                ui::sidebar::explorer::ROW_HEIGHT,
+                ui::sidebar::explorer::STICKY_MAX_ROWS,
+            )
+        } else {
+            crate::fs_tree::StickyLayout::default()
+        };
+        self.explorer_sticky_rows = explorer_sticky.rows.len();
+        let explorer_selection = self.explorer_selected_entries();
+        let explorer_cut_paths = self
+            .explorer_clipboard
+            .as_ref()
+            .filter(|clipboard| clipboard.cut)
+            .map(|clipboard| clipboard.paths.clone())
+            .unwrap_or_default();
+        let explorer_tree_focused = self.explorer_focus_handle.is_focused(window);
+        let explorer_sticky_enabled = self.explorer_sticky_scroll;
+
         let explorer_rows = &self.explorer_rows;
         let explorer_scroll_handle = self.explorer_scroll_handle.clone();
         let explorer_focus_handle = self.explorer_focus_handle.clone();
+        let explorer_drag_target = self.explorer_drag_target.as_ref();
 
         let open = self.active_path().cloned();
         let selected_path = self.selected_path.as_ref();
@@ -351,7 +385,19 @@ impl Render for Workspace {
                 this.start_inline_rename(action.path.clone(), window, cx);
             }))
             .on_action(cx.listener(|this, action: &ExplorerDelete, _, cx| {
-                this.delete_entry(&action.path, cx);
+                this.explorer_delete_action(&action.path, cx);
+            }))
+            .on_action(cx.listener(|this, action: &ExplorerDuplicate, _, cx| {
+                this.explorer_duplicate(&action.path, cx);
+            }))
+            .on_action(cx.listener(|this, action: &ExplorerFindInFolder, window, cx| {
+                this.explorer_find_in_folder(&action.path, window, cx);
+            }))
+            .on_action(cx.listener(|this, action: &ExplorerOpenInTerminal, window, cx| {
+                this.explorer_open_in_terminal(&action.path, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &ExplorerToggleStickyScroll, _, cx| {
+                this.toggle_explorer_sticky_scroll(cx);
             }))
             .on_action(cx.listener(|this, _: &ExplorerCut, _, cx| {
                 this.explorer_cut(cx);
@@ -516,17 +562,25 @@ impl Render for Workspace {
                                 .child(match activity {
                                     Activity::Explorer => match root_opt {
                                         Some(root) => ui::sidebar::explorer::render_tree(
-                                            explorer_rows.clone(),
-                                            explorer_scroll_handle.clone(),
-                                            explorer_focus_handle.clone(),
-                                            Some(root.as_path()),
-                                            open.as_ref(),
-                                            selected_path,
-                                            explorer_section_expanded,
-                                            inline_creating,
-                                            inline_renaming,
-                                            root_display_shared,
-                                            git_path_kinds.clone(),
+                                            ui::sidebar::explorer::ExplorerView {
+                                                rows: explorer_rows.clone(),
+                                                scroll_handle: explorer_scroll_handle.clone(),
+                                                focus_handle: explorer_focus_handle.clone(),
+                                                root_path: Some(root.as_path()),
+                                                open: open.as_ref(),
+                                                focused: selected_path,
+                                                selection: &explorer_selection,
+                                                cut_paths: &explorer_cut_paths,
+                                                drag_target: explorer_drag_target,
+                                                tree_focused: explorer_tree_focused,
+                                                sticky: explorer_sticky.clone(),
+                                                sticky_enabled: explorer_sticky_enabled,
+                                                section_expanded: explorer_section_expanded,
+                                                inline_creating,
+                                                inline_renaming,
+                                                folder: root_display_shared,
+                                                git_map: git_path_kinds.clone(),
+                                            },
                                             &t,
                                             cx,
                                         ),

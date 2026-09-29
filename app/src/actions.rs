@@ -24,6 +24,7 @@ actions!(
         About,
         ExplorerRefresh,
         ExplorerCollapseAll,
+        ExplorerToggleStickyScroll,
         CloseTab,
         NextTab,
         PrevTab,
@@ -122,6 +123,24 @@ pub struct ExplorerRename {
 #[derive(Clone, Debug, PartialEq, gpui::Action)]
 #[action(no_json)]
 pub struct ExplorerDelete {
+    pub path: PathBuf,
+}
+
+#[derive(Clone, Debug, PartialEq, gpui::Action)]
+#[action(no_json)]
+pub struct ExplorerDuplicate {
+    pub path: PathBuf,
+}
+
+#[derive(Clone, Debug, PartialEq, gpui::Action)]
+#[action(no_json)]
+pub struct ExplorerFindInFolder {
+    pub path: PathBuf,
+}
+
+#[derive(Clone, Debug, PartialEq, gpui::Action)]
+#[action(no_json)]
+pub struct ExplorerOpenInTerminal {
     pub path: PathBuf,
 }
 
