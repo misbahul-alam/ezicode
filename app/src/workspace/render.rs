@@ -125,29 +125,12 @@ impl Render for Workspace {
         let terminal_right_w = self.terminal_right_width;
         let panel_resize = self.panel_resize;
 
-        // Sticky scroll is computed here, before the panel borrows any state:
-        // it needs the scroll offset the list committed last frame, and the
-        // row count feeds back into keyboard scrolling.
-        let explorer_sticky = if self.explorer_sticky_scroll && self.explorer_section_expanded {
-            let scroll_top = f32::from(
-                -self
-                    .explorer_scroll_handle
-                    .0
-                    .borrow()
-                    .base_handle
-                    .offset()
-                    .y,
-            );
-            crate::fs_tree::sticky_layout(
-                &self.explorer_rows,
-                scroll_top,
-                ui::sidebar::explorer::ROW_HEIGHT,
-                ui::sidebar::explorer::STICKY_MAX_ROWS,
-            )
-        } else {
-            crate::fs_tree::StickyLayout::default()
-        };
-        self.explorer_sticky_rows = explorer_sticky.rows.len();
+        // Sticky headers are *not* computed here on purpose: they are a
+        // decoration of the explorer's uniform list and are computed during
+        // its prepaint, from the scroll offset the list has already clamped.
+        // Reading the offset from render — a frame behind, and unclamped at
+        // the ends of the list — is what used to make the tree shake when
+        // scrolling into the bottom.
         let explorer_selection = self.explorer_selected_entries();
         let explorer_cut_paths = self
             .explorer_clipboard
@@ -573,7 +556,6 @@ impl Render for Workspace {
                                                 cut_paths: &explorer_cut_paths,
                                                 drag_target: explorer_drag_target,
                                                 tree_focused: explorer_tree_focused,
-                                                sticky: explorer_sticky.clone(),
                                                 sticky_enabled: explorer_sticky_enabled,
                                                 section_expanded: explorer_section_expanded,
                                                 inline_creating,

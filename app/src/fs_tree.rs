@@ -184,27 +184,19 @@ pub fn ancestor_chain(rows: &[VisibleTreeRow], index: usize) -> Vec<usize> {
     out
 }
 
-/// The sticky ("scroll") header stack VS Code paints over the top of the tree:
-/// the ancestor folders of the first row under the widget, plus the vertical
-/// shift applied while one section is being pushed out by the next.
+/// The sticky header stack painted over the top of the tree: the ancestor
+/// folders of the first row under the widget, plus the distance the innermost
+/// one has already drifted out of view.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StickyLayout {
     /// Row indices to pin, root-first.
     pub rows: Vec<usize>,
-    /// Pixels the whole stack is nudged upwards so the last sticky row slides
-    /// away as its section scrolls past, instead of popping.
+    /// Pixels the *last* pinned row is nudged upwards, so it slides behind the
+    /// rows above it as its section scrolls past instead of popping out of
+    /// existence. Only the innermost row moves — Zed's project panel does the
+    /// same, and keeping the outer rows still is what makes the widget look
+    /// calm while scrolling.
     pub shift: f32,
-}
-
-impl StickyLayout {
-    pub fn is_empty(&self) -> bool {
-        self.rows.is_empty()
-    }
-
-    /// Height in pixels actually covered by the widget.
-    pub fn height(&self, row_height: f32) -> f32 {
-        (self.rows.len() as f32 * row_height - self.shift).max(0.0)
-    }
 }
 
 /// Compute the sticky header stack for a scroll position.
@@ -267,8 +259,8 @@ pub fn sticky_layout(
         return layout;
     }
 
-    // Slide the stack up while the innermost pinned section runs out, so the
-    // outgoing folder is pushed away by the next one instead of blinking.
+    // Drift the innermost row up while its section runs out, so the outgoing
+    // folder is pushed away by the next one instead of blinking.
     let last_slot = pinned.len() - 1;
     let last = pinned[last_slot];
     let section_bottom = (subtree_end(rows, last) + 1) as f32 * row_height - scroll_top;
@@ -482,7 +474,7 @@ mod tests {
     #[test]
     fn nothing_sticks_at_the_top_of_the_list() {
         let rows = sample_rows();
-        assert!(sticky_layout(&rows, 0.0, 22.0, 7).is_empty());
+        assert!(sticky_layout(&rows, 0.0, 22.0, 7).rows.is_empty());
     }
 
     #[test]
@@ -506,7 +498,7 @@ mod tests {
 
         // A file at the root level has no parents to pin.
         let flat = vec![row("a.rs", 0, false), row("b.rs", 0, false)];
-        assert!(sticky_layout(&flat, 22.0, 22.0, 7).is_empty());
+        assert!(sticky_layout(&flat, 22.0, 22.0, 7).rows.is_empty());
     }
 
     #[test]
@@ -520,7 +512,6 @@ mod tests {
         let sliding = sticky_layout(&rows, 44.0 + 11.0, 22.0, 7);
         assert_eq!(sliding.rows, vec![0, 1]);
         assert!(sliding.shift > 0.0 && sliding.shift <= 22.0);
-        assert!(sliding.height(22.0) < 44.0);
     }
 
     #[test]

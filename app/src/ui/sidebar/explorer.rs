@@ -4,17 +4,25 @@
 //! list: 22px rows with 8px indents and indent guides, a virtualized list that
 //! stays cheap on projects with thousands of files, multi-selection with
 //! Ctrl/Cmd and Shift, drag and drop with hover-to-expand, a full context
-//! menu, and the sticky-scroll widget that keeps the parent folders of the
-//! rows you are looking at pinned to the top of the panel.
+//! menu, and sticky scroll — the parent folders of the rows you are looking
+//! at stay pinned to the top of the panel.
+//!
+//! Sticky headers are a `UniformListDecoration` (see `StickyFolders`), the way
+//! Zed's project panel does it, rather than an element floating over the list:
+//! that is what keeps them exact and jitter-free at the ends of the scroll
+//! range, and keeps the wheel scrolling the tree while the pointer is over
+//! them.
 
 use std::collections::HashMap;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use gpui::{
-    div, prelude::*, px, rgba, svg, uniform_list, AnyElement, Bounds, Context, DragMoveEvent,
-    FocusHandle, FontWeight, IntoElement, MouseButton, Pixels, Render, ScrollWheelEvent,
-    SharedString, UniformListScrollHandle, Window,
+    div, point, prelude::*, px, rgba, size, svg, uniform_list, AnyElement, App, AvailableSpace,
+    Bounds, Context, DragMoveEvent, Element, ElementId, Entity, FocusHandle, FontWeight,
+    GlobalElementId, InspectorElementId, IntoElement, LayoutId, MouseButton, Pixels, Point, Render,
+    SharedString, Style, UniformListDecoration, UniformListScrollHandle, Window,
 };
 use gpui_component::{input::Input, menu::ContextMenuExt, tooltip::Tooltip, Sizable};
 
@@ -25,7 +33,7 @@ use crate::actions::{
     ExplorerToggleStickyScroll, OpenFolder,
 };
 use crate::file_icons;
-use crate::fs_tree::{ancestor_chain, subtree_end, StickyLayout, VisibleTreeRow};
+use crate::fs_tree::{ancestor_chain, sticky_layout, subtree_end, VisibleTreeRow};
 use crate::git::ChangeKind;
 use crate::theme::Colors;
 use crate::ui::common::icon_img;
@@ -76,7 +84,6 @@ pub(crate) struct ExplorerView<'a> {
     /// Whether the tree itself holds keyboard focus, which decides between
     /// VS Code's active and inactive selection colors.
     pub tree_focused: bool,
-    pub sticky: StickyLayout,
     pub sticky_enabled: bool,
     pub section_expanded: bool,
     pub inline_creating: Option<&'a InlineCreating>,
@@ -269,7 +276,7 @@ fn tree_body(view: ExplorerView<'_>, t: &Colors, cx: &mut Context<Workspace>) ->
         cut_paths,
         drag_target,
         tree_focused,
-        sticky,
+        sticky_enabled,
         git_map,
         inline_creating,
         inline_renaming,
@@ -376,12 +383,23 @@ fn tree_body(view: ExplorerView<'_>, t: &Colors, cx: &mut Context<Workspace>) ->
         this.handle_explorer_key(event, window, cx);
     }));
 
+    // Sticky headers are a decoration *of the list*, not an overlay on top of
+    // it (see `StickyFolders`). Attaching them here is what keeps scrolling
+    // smooth and keeps the wheel working over the headers.
+    let list = if sticky_enabled {
+        list.with_decoration(StickyFolders {
+            workspace: cx.entity(),
+            style,
+        })
+    } else {
+        list
+    };
+
     let root_for_blank = root_path.map(|path| path.to_path_buf());
     let empty_area_root = root_for_blank.clone();
     let scroll_for_drag = scroll_handle.clone();
-    let row_count = rows.len();
 
-    let mut container = div()
+    let container = div()
         .id("explorer-tree-body")
         .relative()
         .flex_1()
@@ -405,21 +423,13 @@ fn tree_body(view: ExplorerView<'_>, t: &Colors, cx: &mut Context<Workspace>) ->
         // can be dropped outside the current viewport.
         .on_drag_move(
             cx.listener(move |_this, event: &DragMoveEvent<ExplorerDrag>, window, _cx| {
-                if auto_scroll_during_drag(
-                    &scroll_for_drag,
-                    event.bounds,
-                    event.event.position,
-                    row_count,
-                ) {
+                if auto_scroll_during_drag(&scroll_for_drag, event.bounds, event.event.position)
+                {
                     window.refresh();
                 }
             }),
         )
         .child(list);
-
-    if !sticky.is_empty() {
-        container = container.child(sticky_widget(&rows, &sticky, &scroll_handle, style, cx));
-    }
 
     container
         .context_menu(move |menu, _window, _cx| {
@@ -444,8 +454,7 @@ fn tree_body(view: ExplorerView<'_>, t: &Colors, cx: &mut Context<Workspace>) ->
 fn auto_scroll_during_drag(
     scroll_handle: &UniformListScrollHandle,
     bounds: Bounds<Pixels>,
-    position: gpui::Point<Pixels>,
-    row_count: usize,
+    position: Point<Pixels>,
 ) -> bool {
     if !bounds.contains(&position) {
         return false;
@@ -459,28 +468,19 @@ fn auto_scroll_during_drag(
     } else {
         return false;
     };
-    scroll_by(scroll_handle, px(delta), row_count);
+    scroll_by(scroll_handle, px(delta));
     true
 }
 
-/// Shift the list by `delta` pixels, clamped to the scrollable range.
-fn scroll_by(scroll_handle: &UniformListScrollHandle, delta: Pixels, row_count: usize) {
-    let (base, viewport) = {
-        let state = scroll_handle.0.borrow();
-        (
-            state.base_handle.clone(),
-            state
-                .last_item_size
-                .map(|size| size.item.height)
-                .unwrap_or(px(0.0)),
-        )
-    };
-    let content = px(row_count as f32 * ROW_HEIGHT);
-    let min_y = if content > viewport {
-        viewport - content
-    } else {
-        px(0.0)
-    };
+/// Shift the list by `delta` pixels.
+///
+/// The limit comes from the list's own `max_offset`, which its prepaint keeps
+/// up to date — computing a limit here from a row count and a row height would
+/// be a second opinion, and the two disagreeing at the end of the list is
+/// exactly what makes a tree judder.
+fn scroll_by(scroll_handle: &UniformListScrollHandle, delta: Pixels) {
+    let base = scroll_handle.0.borrow().base_handle.clone();
+    let min_y = -base.max_offset().height;
     let mut offset = base.offset();
     offset.y += delta;
     if offset.y > px(0.0) {
@@ -492,61 +492,179 @@ fn scroll_by(scroll_handle: &UniformListScrollHandle, delta: Pixels, row_count: 
     base.set_offset(offset);
 }
 
-/// VS Code's sticky scroll: the ancestor folders of whatever is at the top of
-/// the viewport, pinned over the list and sliding out as their section ends.
-fn sticky_widget(
-    rows: &Arc<[VisibleTreeRow]>,
-    sticky: &StickyLayout,
-    scroll_handle: &UniformListScrollHandle,
+/// Sticky scroll: the ancestor folders of whatever is at the top of the
+/// viewport, pinned to the top of the list and drifting out as their section
+/// ends.
+///
+/// This is a `UniformListDecoration` rather than an overlay element, which is
+/// how Zed's project panel does it, and the distinction is what makes it feel
+/// right:
+///
+/// * A decoration is computed during the list's *prepaint*, so it sees the
+///   scroll offset the list has already clamped, the measured item height and
+///   the real visible range. An overlay has to read the offset a frame late
+///   during `render`, and at the ends of the list — where the offset is still
+///   overscrolled when read but clamped when painted — the two disagree and
+///   the pinned rows visibly shake.
+/// * It is prepainted inside the list's own hitbox, so the wheel keeps
+///   scrolling the tree while the pointer is over a header. The overlay had to
+///   forward wheel events by hand, and because GPUI hitboxes do not block by
+///   default the list handled the same event *as well*, scrolling twice per
+///   tick and fighting its own clamp at the bottom.
+/// * Nothing outside the list is mutated per frame, so scrolling no longer
+///   drags the whole panel through an extra layout pass.
+struct StickyFolders {
+    workspace: Entity<Workspace>,
     style: RowStyle,
-    cx: &mut Context<Workspace>,
-) -> AnyElement {
-    let t = style.colors;
-    let row_count = rows.len();
-    let wheel_handle = scroll_handle.clone();
+}
 
-    // Two layers: a clipping frame pinned to the top of the list, and the
-    // stack of headers inside it shifted up by `shift` so the outgoing folder
-    // slides out of view instead of disappearing in one frame.
-    let mut stack = div()
-        .absolute()
-        .top(px(-sticky.shift))
-        .left_0()
-        .w_full()
-        .flex()
-        .flex_col();
+impl UniformListDecoration for StickyFolders {
+    fn compute(
+        &self,
+        _visible_range: Range<usize>,
+        bounds: Bounds<Pixels>,
+        scroll_offset: Point<Pixels>,
+        item_height: Pixels,
+        _item_count: usize,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> AnyElement {
+        let row_height = f32::from(item_height);
+        let scroll_top = f32::from(-scroll_offset.y).max(0.0);
+        let style = self.style;
 
-    for &index in &sticky.rows {
-        let Some(row) = rows.get(index) else {
-            continue;
-        };
-        stack = stack.child(sticky_row(index, row, style, cx));
+        let (mut rest, shift) = self.workspace.update(cx, |workspace, cx| {
+            // The inline "new file" editor inserts a row the flat model does
+            // not know about. Rather than shift every index for a state that
+            // lasts a couple of seconds, the headers step aside for it.
+            if !workspace.explorer_sticky_scroll || workspace.inline_creating.is_some() {
+                workspace.explorer_sticky_rows = 0;
+                return (Vec::new(), 0.0);
+            }
+            let rows = Arc::clone(&workspace.explorer_rows);
+            let layout = sticky_layout(&rows, scroll_top, row_height, STICKY_MAX_ROWS);
+            // Keyboard navigation reveals rows past the headers; it reads this
+            // back. Deliberately no `notify` — this runs inside prepaint.
+            workspace.explorer_sticky_rows = layout.rows.len();
+            let elements = layout
+                .rows
+                .iter()
+                .enumerate()
+                .filter_map(|(slot, &ix)| {
+                    let is_last = slot + 1 == layout.rows.len();
+                    rows.get(ix)
+                        .map(|row| sticky_row(ix, row, is_last, style, cx))
+                })
+                .collect::<Vec<AnyElement>>();
+            (elements, layout.shift)
+        });
+
+        if rest.is_empty() {
+            return StickyFoldersElement {
+                drifting: None,
+                rest: Vec::new(),
+            }
+            .into_any_element();
+        }
+
+        // `bounds.origin` is the scrolled content origin; undo the scroll to
+        // get back to the top edge of the viewport.
+        let base_origin = bounds.origin - point(px(0.0), scroll_offset.y);
+        let available = size(
+            AvailableSpace::Definite(bounds.size.width),
+            AvailableSpace::Definite(item_height),
+        );
+
+        // Only the innermost header drifts; the outer ones never move, so the
+        // stack stays rock steady while its last row slides away behind them.
+        let mut drifting = if shift > 0.0 { rest.pop() } else { None };
+
+        for (slot, element) in rest.iter_mut().enumerate() {
+            element.layout_as_root(available, window, cx);
+            element.prepaint_at(base_origin + point(px(0.0), item_height * slot), window, cx);
+        }
+        if let Some(element) = drifting.as_mut() {
+            let y = item_height * rest.len() - px(shift);
+            element.layout_as_root(available, window, cx);
+            element.prepaint_at(base_origin + point(px(0.0), y), window, cx);
+        }
+
+        StickyFoldersElement { drifting, rest }.into_any_element()
+    }
+}
+
+/// Paints the pinned headers. Painting order is the z-order: the drifting row
+/// goes down first so it slides *behind* the headers above it, and the rest are
+/// painted bottom-up so the outermost folder ends up on top.
+struct StickyFoldersElement {
+    drifting: Option<AnyElement>,
+    rest: Vec<AnyElement>,
+}
+
+impl IntoElement for StickyFoldersElement {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+impl Element for StickyFoldersElement {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
     }
 
-    div()
-        .id("explorer-sticky-scroll")
-        .absolute()
-        .top_0()
-        .left_0()
-        .w_full()
-        .h(px(sticky.height(ROW_HEIGHT)))
-        .overflow_hidden()
-        .bg(rgba(t.panel))
-        .shadow_md()
-        // The widget sits on top of the list, so forward the wheel to it —
-        // scrolling over the sticky headers must scroll the tree.
-        .on_scroll_wheel(move |event: &ScrollWheelEvent, window, _cx| {
-            let delta = event.delta.pixel_delta(px(ROW_HEIGHT));
-            scroll_by(&wheel_handle, delta.y, row_count);
-            window.refresh();
-        })
-        .child(stack)
-        .into_any_element()
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        (window.request_layout(Style::default(), [], cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _request_layout: &mut Self::RequestLayoutState,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> Self::PrepaintState {
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _request_layout: &mut Self::RequestLayoutState,
+        _prepaint: &mut Self::PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        if let Some(drifting) = self.drifting.as_mut() {
+            drifting.paint(window, cx);
+        }
+        for element in self.rest.iter_mut().rev() {
+            element.paint(window, cx);
+        }
+    }
 }
 
 fn sticky_row(
     index: usize,
     row_data: &VisibleTreeRow,
+    is_last: bool,
     style: RowStyle,
     cx: &mut Context<Workspace>,
 ) -> AnyElement {
@@ -562,6 +680,8 @@ fn sticky_row(
     };
 
     let toggle_path = path.clone();
+    // Its own ancestors stay pinned above it once we scroll to it.
+    let own_ancestors = row_data.depth.min(STICKY_MAX_ROWS);
     div()
         .id(("sticky-row", index))
         .w_full()
@@ -572,7 +692,12 @@ fn sticky_row(
         .pl(px(pad))
         .pr(px(8.0))
         .cursor_pointer()
+        // Opaque, so the rows scrolling underneath stay hidden, with a hairline
+        // under the innermost header to separate the stack from the tree.
         .bg(rgba(t.panel))
+        .when(is_last, |row| {
+            row.border_b_1().border_color(rgba(t.border_variant))
+        })
         .hover(|s| s.bg(rgba(t.ghost_hover)))
         // Clicking a sticky header jumps to that folder, as in VS Code.
         .on_click(cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {
@@ -585,8 +710,14 @@ fn sticky_row(
                 .iter()
                 .position(|candidate| candidate.path == path)
             {
-                this.explorer_scroll_handle
-                    .scroll_to_item_strict(ix, gpui::ScrollStrategy::Top);
+                // Scroll just far enough that this folder stops being sticky:
+                // it lands directly under its own pinned ancestors, which is
+                // what Zed's project panel does with a sticky item click.
+                this.explorer_scroll_handle.scroll_to_item_strict_with_offset(
+                    ix,
+                    gpui::ScrollStrategy::Top,
+                    own_ancestors,
+                );
             }
             cx.notify();
             cx.stop_propagation();

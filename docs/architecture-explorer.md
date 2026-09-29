@@ -36,10 +36,10 @@ pure function of state, which is what keeps repaints cheap.
 
 ## 3. VS Code behaviors and where they live
 
-### Sticky scroll (`fs_tree::sticky_layout`)
+### Sticky scroll (`fs_tree::sticky_layout` + `StickyFolders`)
 
 VS Code pins the ancestor folders of whatever sits at the top of the viewport.
-The algorithm here mirrors `StickyScrollController`:
+The *what to pin* half mirrors `StickyScrollController`:
 
 1. Start from the row at the current scroll offset and take its ancestors.
 2. Grow the stack one line at a time: a further ancestor is pinned only if it
@@ -47,17 +47,44 @@ The algorithm here mirrors `StickyScrollController`:
    stack only ever grows during this refinement, which is what keeps it from
    oscillating between two states while scrolling.
 3. A folder is pinned only while its own row is hidden behind the widget.
-4. When the innermost pinned section ends inside the widget, the whole stack is
-   shifted up by the overlap (`StickyLayout::shift`) so the outgoing folder
-   slides away instead of blinking out.
+4. When the innermost pinned section ends inside the widget, that row — and
+   only that row — drifts upwards behind the ones above it, so it slides away
+   instead of blinking out. Zed's project panel drifts just the innermost item
+   too; keeping the outer rows perfectly still is what makes the stack look
+   calm.
 
-The widget is drawn as an overlay clipped to `StickyLayout::height`, forwards
-wheel events to the list underneath, and its rows are clickable (click scrolls
-to the folder, click on the twistie collapses it, Alt+click toggles the whole
-subtree). Keyboard navigation reveals rows with an offset equal to the sticky
-row count, so the focused row is never parked under the widget. The feature
-follows `workbench.tree.enableStickyScroll` and is toggled from the panel's
-context menu; the preference is stored per workspace.
+The *how to draw it* half follows Zed's `ui::sticky_items`: the headers are a
+**`UniformListDecoration`** attached to the explorer's `uniform_list`, not an
+overlay element layered on top of it. That choice is load-bearing:
+
+* A decoration is computed during the list's **prepaint**, so it sees the
+  scroll offset the list has already clamped, the measured item height and the
+  real visible range. An overlay has to read the offset from `render`, a frame
+  late and *unclamped* at the ends of the list; the two disagree while
+  overscrolling, the pinned set flips between two answers on consecutive
+  frames, and the tree visibly shakes when you scroll into the bottom.
+* The headers are prepainted inside the list's own hitbox, so the wheel keeps
+  scrolling the tree while the pointer is over them — no hand-rolled scroll
+  forwarding. The overlay needed that forwarding, and because GPUI hitboxes do
+  not block by default the list handled the very same event as well: two
+  deltas per tick, each clamped differently at the bottom.
+* Being inside the list also means the content mask clips the drifting row for
+  free, and no per-frame state outside the list changes, so scrolling no
+  longer drags the whole panel through an extra layout pass.
+
+Only `explorer_sticky_rows` is written back (during prepaint, without
+notifying) so keyboard navigation can reveal rows past the headers. Headers are
+clickable: click scrolls to the folder, the twistie collapses it, Alt+click
+toggles the whole subtree. The feature follows
+`workbench.tree.enableStickyScroll`, is toggled from the panel's context menu,
+and is stored per workspace. It steps aside while the inline "new file" editor
+is open, because that row does not exist in the flat model the indices come
+from.
+
+Anything that nudges the scroll position by hand — the drag auto-scroll near
+the panel edges — clamps against the list's own `max_offset` rather than
+recomputing a limit from row counts, for the same reason: a second opinion
+about where the bottom is, is exactly what makes a list judder.
 
 ### Selection and focus
 
