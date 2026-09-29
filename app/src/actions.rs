@@ -61,10 +61,6 @@ actions!(
         TerminalPasteText,
         /// Select the active terminal's complete scrollback.
         TerminalSelectAll,
-        /// Create a terminal in the center/bottom terminal surface.
-        NewCenterTerminal,
-        /// Forward a terminal selection to the agent panel when available.
-        AddTerminalSelectionToAgentThread,
         TerminalTab1,
         TerminalTab2,
         TerminalTab3,

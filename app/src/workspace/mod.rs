@@ -1187,13 +1187,6 @@ impl Workspace {
         }
     }
 
-    /// EziCode's editor area cannot host a terminal tab, so its center-terminal
-    /// equivalent is the main bottom terminal surface rather than the optional
-    /// right dock. This preserves the existing terminal/tab architecture.
-    pub(crate) fn new_center_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.new_terminal(window, cx);
-    }
-
     /// Open a terminal, optionally rooted at a specific directory (the
     /// explorer's "Open in Integrated Terminal").
     pub(crate) fn new_terminal_in(

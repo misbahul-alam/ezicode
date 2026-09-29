@@ -297,9 +297,6 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &NewTerminal, window, cx| {
                 this.new_terminal_for_focused_dock(window, cx);
             }))
-            .on_action(cx.listener(|this, _: &NewCenterTerminal, window, cx| {
-                this.new_center_terminal(window, cx);
-            }))
             .on_action(cx.listener(|this, _: &ToggleTerminalRight, window, cx| {
                 this.toggle_terminal_right(window, cx);
             }))
@@ -342,12 +339,6 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, _: &ClearTerminal, window, cx| {
                 this.clear_focused_terminal(window, cx);
             }))
-            .on_action(cx.listener(
-                |this, _: &AddTerminalSelectionToAgentThread, _window, cx| {
-                    this.status = "Agent Thread is not available in EziCode".into();
-                    cx.notify();
-                },
-            ))
             .on_action(cx.listener(|this, _: &NewFile, window, cx| this.new_file(window, cx)))
             .on_action(cx.listener(|this, _: &OpenFile, window, cx| {
                 this.open_file_dialog(window, cx);

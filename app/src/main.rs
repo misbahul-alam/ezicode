@@ -104,7 +104,6 @@ fn main() {
                 KeyBinding::new("ctrl-shift-c", TerminalCopy, None),
                 KeyBinding::new("ctrl-shift-v", TerminalPaste, None),
                 KeyBinding::new("ctrl-shift-a", TerminalSelectAll, None),
-                KeyBinding::new("ctrl->", AddTerminalSelectionToAgentThread, None),
                 KeyBinding::new("alt-1", TerminalTab1, None),
                 KeyBinding::new("alt-2", TerminalTab2, None),
                 KeyBinding::new("alt-3", TerminalTab3, None),

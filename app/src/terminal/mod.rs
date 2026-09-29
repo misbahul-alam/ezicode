@@ -10,8 +10,8 @@ use gpui_terminal::{TerminalConfig, TerminalView};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
 use crate::actions::{
-    AddTerminalSelectionToAgentThread, ClearTerminal, CloseTerminal, NewCenterTerminal,
-    NewTerminal, TerminalCopy, TerminalPaste, TerminalPasteText, TerminalSelectAll,
+    ClearTerminal, CloseTerminal, NewTerminal, TerminalCopy, TerminalPaste, TerminalPasteText,
+    TerminalSelectAll,
 };
 use crate::assets::MONO_FONT;
 use crate::theme::Colors;
@@ -494,7 +494,6 @@ pub fn render_terminal_panel(
 
                                 menu.action_context(action_context.clone())
                                     .menu("New Terminal", Box::new(NewTerminal))
-                                    .menu("New Center Terminal", Box::new(NewCenterTerminal))
                                     .separator()
                                     .menu_with_enable(
                                         "Copy",
@@ -513,15 +512,6 @@ pub fn render_terminal_panel(
                                     )
                                     .menu("Select All", Box::new(TerminalSelectAll))
                                     .menu("Clear", Box::new(ClearTerminal))
-                                    .separator()
-                                    // EziCode does not yet have an Agent Thread surface. Keep
-                                    // Zed's command discoverable, but disabled rather than
-                                    // pretending to send the selection somewhere.
-                                    .menu_with_enable(
-                                        "Add to Agent Thread",
-                                        Box::new(AddTerminalSelectionToAgentThread),
-                                        false,
-                                    )
                                     .separator()
                                     .menu("Close Terminal Tab", Box::new(CloseTerminal))
                             }),
