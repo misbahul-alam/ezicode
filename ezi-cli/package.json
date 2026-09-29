@@ -1,0 +1,32 @@
+{
+  "name": "ezi",
+  "version": "2.0.1",
+  "description": "Launch ezicode editor with npx — zero-install native binary launcher",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/olovalabs/ezicode.git",
+    "directory": "ezi-cli"
+  },
+  "homepage": "https://github.com/olovalabs/ezicode",
+  "keywords": ["ezicode", "ezi", "editor", "ide", "cli", "launcher"],
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "ezi": "./dist/index.js"
+  },
+  "files": ["dist/"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node ./dist/index.js",
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "typescript": "^5.6.0"
+  }
+}
