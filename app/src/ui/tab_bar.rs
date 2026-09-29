@@ -68,7 +68,9 @@ fn render_tab_content(
         .and_then(|p| git_repo.and_then(|r| r.changes.iter().find(|c| &c.path == p)));
 
     let (git_letter, git_color) = if let Some(change) = git_change {
-        if change.untracked {
+        if change.conflicted {
+            (Some(ChangeKind::Conflicted.letter()), Some(t.vc_deleted))
+        } else if change.untracked {
             (Some("U"), Some(t.vc_added))
         } else if let Some(worktree) = change.worktree {
             (Some(worktree.letter()), Some(kind_color(worktree, t)))

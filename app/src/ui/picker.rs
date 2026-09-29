@@ -17,6 +17,11 @@ pub enum PickerKind {
     CommandPalette,
     GoToLine,
     LanguageSelector,
+    /// Branch switcher: Enter checks out the selection, or creates a branch
+    /// named after the query when nothing matches.
+    GitBranch,
+    /// Branch deletion: Enter deletes the selected branch (`git branch -d`).
+    GitBranchDelete,
 }
 
 #[derive(Clone, Debug)]
@@ -608,6 +613,105 @@ pub fn command_palette_items() -> Vec<PickerItem> {
             is_recent: false,
             score: 0,
         },
+        PickerItem {
+            id: "git.commit_all".into(),
+            title: "Git: Commit All (Tracked)".into(),
+            subtitle: Some("Git".into()),
+            icon: None,
+            shortcut: None,
+            is_recent: false,
+            score: 0,
+        },
+        PickerItem {
+            id: "git.commit_amend".into(),
+            title: "Git: Amend Last Commit".into(),
+            subtitle: Some("Git".into()),
+            icon: None,
+            shortcut: None,
+            is_recent: false,
+            score: 0,
+        },
+        PickerItem {
+            id: "git.fetch".into(),
+            title: "Git: Fetch".into(),
+            subtitle: Some("Git".into()),
+            icon: None,
+            shortcut: None,
+            is_recent: false,
+            score: 0,
+        },
+        PickerItem {
+            id: "git.pull".into(),
+            title: "Git: Pull".into(),
+            subtitle: Some("Git".into()),
+            icon: None,
+            shortcut: None,
+            is_recent: false,
+            score: 0,
+        },
+        PickerItem {
+            id: "git.push".into(),
+            title: "Git: Push".into(),
+            subtitle: Some("Git".into()),
+            icon: None,
+            shortcut: None,
+            is_recent: false,
+            score: 0,
+        },
+        PickerItem {
+            id: "git.push_force".into(),
+            title: "Git: Force Push (with lease)".into(),
+            subtitle: Some("Git".into()),
+            icon: None,
+            shortcut: None,
+            is_recent: false,
+            score: 0,
+        },
+        PickerItem {
+            id: "git.stash".into(),
+            title: "Git: Stash Changes (incl. untracked)".into(),
+            subtitle: Some("Git".into()),
+            icon: None,
+            shortcut: None,
+            is_recent: false,
+            score: 0,
+        },
+        PickerItem {
+            id: "git.stash_pop".into(),
+            title: "Git: Pop Latest Stash".into(),
+            subtitle: Some("Git".into()),
+            icon: None,
+            shortcut: None,
+            is_recent: false,
+            score: 0,
+        },
+        PickerItem {
+            id: "git.branch.checkout".into(),
+            title: "Git: Checkout Branch… (create / switch)".into(),
+            subtitle: Some("Git".into()),
+            icon: Some("ui_icons/git_branch.svg".into()),
+            shortcut: None,
+            is_recent: false,
+            score: 0,
+        },
+        PickerItem {
+            id: "git.branch.delete".into(),
+            title: "Git: Delete Branch…".into(),
+            subtitle: Some("Git".into()),
+            icon: Some("ui_icons/git_branch.svg".into()),
+            shortcut: None,
+            is_recent: false,
+            score: 0,
+        },
+        PickerItem {
+            id: "git.init".into(),
+            title: "Git: Initialize Repository".into(),
+            subtitle: Some("Git".into()),
+            icon: None,
+            shortcut: None,
+            is_recent: false,
+            score: 0,
+        },
         // Help
         PickerItem {
             id: "help.about".into(),
@@ -648,6 +752,13 @@ pub fn render_picker(
             .child("Type a line number (and optional :column) and press Enter to jump.")
             .into_any_element()
     } else if filtered_items.is_empty() {
+        let empty_text = match kind {
+            PickerKind::GitBranch => {
+                "No matching branch — press Enter to create a branch with the typed name"
+            }
+            PickerKind::GitBranchDelete => "No matching branch",
+            _ => "No matching results",
+        };
         div()
             .px(px(12.0))
             .py(px(16.0))
@@ -655,7 +766,7 @@ pub fn render_picker(
             .justify_center()
             .text_size(px(13.5))
             .text_color(rgba(0x8b949eff))
-            .child("No matching results")
+            .child(empty_text)
             .into_any_element()
     } else {
         let mut list_col = div()

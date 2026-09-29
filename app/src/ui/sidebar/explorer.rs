@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -14,6 +15,7 @@ use crate::actions::{
 };
 use crate::file_icons;
 use crate::fs_tree::VisibleTreeRow;
+use crate::git::ChangeKind;
 use crate::theme::Colors;
 use crate::ui::common::icon_img;
 use crate::workspace::{CreatingKind, ExplorerDrag, InlineCreating, InlineRenaming, Workspace};
@@ -22,6 +24,18 @@ const INDENT_STEP: f32 = 16.0;
 const BASE_PAD: f32 = 12.0;
 const ROW_HEIGHT: f32 = 26.0;
 const ICON_SIZE: f32 = 18.0;
+
+/// VS Code-style git tint for tree entries (files and their parent dirs).
+fn git_kind_color(kind: ChangeKind, t: &Colors) -> u32 {
+    match kind {
+        ChangeKind::Modified => t.vc_modified,
+        ChangeKind::Added | ChangeKind::Renamed | ChangeKind::Copied | ChangeKind::Untracked => {
+            t.vc_added
+        }
+        ChangeKind::Deleted | ChangeKind::Conflicted => t.vc_deleted,
+        ChangeKind::TypeChanged => t.icon_accent,
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn render_tree(
@@ -35,6 +49,7 @@ pub(crate) fn render_tree(
     inline_creating: Option<&InlineCreating>,
     inline_renaming: Option<&InlineRenaming>,
     folder: &SharedString,
+    git_map: Arc<HashMap<PathBuf, ChangeKind>>,
     t: &Colors,
     cx: &mut Context<Workspace>,
 ) -> AnyElement {
@@ -208,6 +223,7 @@ pub(crate) fn render_tree(
                 let selected_path = selected_path.clone();
                 let creating = creating.clone();
                 let renaming = renaming.clone();
+                let git_map = Arc::clone(&git_map);
                 workspace.update(app, |_, cx| {
                     range
                         .map(|idx| {
@@ -225,12 +241,14 @@ pub(crate) fn render_tree(
                             } else {
                                 idx
                             };
+                            let git_kind = git_map.get(&row_data[row_idx].path).copied();
                             tree_row(
                                 idx,
                                 &row_data[row_idx],
                                 open.as_ref(),
                                 selected_path.as_ref(),
                                 renaming.as_ref(),
+                                git_kind,
                                 colors,
                                 cx,
                             )
@@ -469,6 +487,7 @@ fn tree_row(
     open: Option<&PathBuf>,
     selected_path: Option<&PathBuf>,
     renaming: Option<&InlineRenaming>,
+    git_kind: Option<ChangeKind>,
     t: Colors,
     cx: &mut Context<Workspace>,
 ) -> AnyElement {
@@ -516,7 +535,9 @@ fn tree_row(
     } else {
         file_icons::icon_for(&row_data.path)
     };
-    let text_color = t.text;
+    let text_color = git_kind
+        .map(|kind| git_kind_color(kind, &t))
+        .unwrap_or(t.text);
     let chevron_element = if is_dir {
         let chev_path = if expanded {
             "ui_icons/chevron-down_tint.svg"
@@ -562,7 +583,19 @@ fn tree_row(
                 .text_size(px(14.0))
                 .text_color(rgba(text_color))
                 .child(SharedString::from(name)),
-        );
+        )
+        // Git status letter (files only; directories just get the tint).
+        .when_some(git_kind.filter(|_| !is_dir), |d, kind| {
+            d.child(
+                div()
+                    .flex_none()
+                    .pl(px(4.0))
+                    .text_size(px(11.0))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(rgba(git_kind_color(kind, &t)))
+                    .child(SharedString::from(kind.letter())),
+            )
+        });
 
     let path_click = path.clone();
     row = row

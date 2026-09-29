@@ -5,22 +5,25 @@ use gpui::{
     IntoElement, SharedString, Window,
 };
 use gpui_component::{
+    button::{Button, ButtonVariants as _},
     input::{Input, InputState},
-    menu::ContextMenuExt,
+    menu::{ContextMenuExt, DropdownMenu as _},
     scroll::ScrollableElement as _,
     tooltip::Tooltip,
     Sizable,
 };
 
 use crate::actions::{
-    ExplorerCopyPath, ExplorerRevealInFinder, GitDiscardAll, GitDiscardFile, GitOpenDiff,
-    GitOpenFile, GitRefresh, GitStageAll, GitStageFile, GitUnstageAll, GitUnstageFile,
+    ExplorerCopyPath, ExplorerRevealInFinder, GitBranchPicker, GitCommitAll, GitCommitAmend,
+    GitDiscardAll, GitDiscardFile, GitFetch, GitForcePush, GitInit, GitOpenDiff, GitOpenFile,
+    GitPull, GitPush, GitRefresh, GitStageAll, GitStageFile, GitStashPop, GitStashPush,
+    GitUnstageAll, GitUnstageFile,
 };
 use crate::file_icons;
 use crate::git::{ChangeKind, GitChange, RepoStatus};
 use crate::theme::Colors;
 use crate::ui::common::icon_img;
-use crate::workspace::Workspace;
+use crate::workspace::{GitConfirm, GitSection, Workspace};
 
 const ROW_HEIGHT: f32 = 26.0;
 
@@ -35,21 +38,38 @@ fn kind_color(kind: ChangeKind, t: &Colors) -> u32 {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Which panel section a row is rendered in — decides its letter, color and
+/// hover actions.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RowSection {
+    Conflict,
+    Staged,
+    Unstaged,
+    Untracked,
+}
+
+/// Everything the panel needs from the workspace, bundled so the render
+/// call in `render.rs` stays readable as the parameter list grows.
+pub(crate) struct GitPanelParams<'a> {
+    pub commit_input: Option<&'a Entity<InputState>>,
+    pub repo: Option<&'a RepoStatus>,
+    /// Whether a folder is open at all (drives the `git init` empty state).
+    pub has_root: bool,
+    pub repo_section_expanded: bool,
+    pub conflicts_expanded: bool,
+    pub staged_expanded: bool,
+    pub changes_expanded: bool,
+    pub untracked_expanded: bool,
+    /// Label of the remote operation in flight, e.g. "Push".
+    pub op_running: Option<&'static str>,
+}
+
 pub(crate) fn render_git_panel(
-    commit_input: Option<&Entity<InputState>>,
-    repo: Option<&RepoStatus>,
-    repo_section_expanded: bool,
-    staged_expanded: bool,
-    changes_expanded: bool,
+    params: GitPanelParams,
     t: &Colors,
     window: &mut Window,
     cx: &mut Context<Workspace>,
 ) -> AnyElement {
-    let branch = repo
-        .and_then(|r| r.branch.clone())
-        .unwrap_or_else(|| "main".to_string());
-
     let mut col = div()
         .size_full()
         .flex()
@@ -59,14 +79,20 @@ pub(crate) fn render_git_panel(
 
     col = col.child(header(t, window, cx));
 
-    match repo {
+    match params.repo {
         None => {
-            col = col.child(empty_state(
-                "Open a folder inside a Git repository\nto see your changes here.",
-                t,
-            ));
+            if params.has_root {
+                col = col.child(init_repo_state(t, cx));
+            } else {
+                col = col.child(empty_state(
+                    "Open a folder inside a Git repository\nto see your changes here.",
+                    t,
+                ));
+            }
         }
         Some(repo) => {
+            col = col.child(branch_row(repo, params.op_running, t, cx));
+
             let mut body = div()
                 .id("git-sidebar-scroll")
                 .flex_1()
@@ -76,244 +102,188 @@ pub(crate) fn render_git_panel(
                 .flex_col()
                 .overflow_y_scrollbar();
 
+            let conflicts: Vec<GitChange> = repo
+                .changes
+                .iter()
+                .filter(|c| c.is_conflicted())
+                .cloned()
+                .collect();
             let staged: Vec<GitChange> = repo
                 .changes
                 .iter()
-                .filter(|c| c.is_staged())
+                .filter(|c| c.is_staged() && !c.is_conflicted())
                 .cloned()
                 .collect();
             let unstaged: Vec<GitChange> = repo
                 .changes
                 .iter()
-                .filter(|c| !c.is_staged() || c.worktree.is_some() || c.is_untracked())
+                .filter(|c| !c.is_untracked() && !c.is_conflicted() && c.worktree.is_some())
+                .cloned()
+                .collect();
+            let untracked: Vec<GitChange> = repo
+                .changes
+                .iter()
+                .filter(|c| c.is_untracked())
                 .cloned()
                 .collect();
 
-            let repo_chevron = if repo_section_expanded {
-                "ui_icons/chevron-down_tint.svg"
-            } else {
-                "ui_icons/chevron-right_tint.svg"
-            };
+            let branch = repo.branch.clone().unwrap_or_else(|| "main".to_string());
 
-            let repo_section_header = div()
-                .id("git-repo-header")
-                .h(px(26.0))
-                .px(px(8.0))
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(4.0))
-                .cursor_pointer()
-                .hover(|s| s.bg(rgba(t.ghost_hover)))
-                .child(
+            body = body.child(section_header(
+                "git-repo-header",
+                "Repository",
+                params.repo_section_expanded,
+                None,
+                GitSection::Repo,
+                Vec::new(),
+                t,
+                cx,
+            ));
+
+            if params.repo_section_expanded {
+                body = body.child(commit_box(params.commit_input, &branch, t, window, cx));
+            }
+
+            if repo.changes.is_empty() {
+                body = body.child(
                     div()
-                        .w(px(16.0))
-                        .h(px(16.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            svg()
-                                .path(repo_chevron)
-                                .w(px(12.0))
-                                .h(px(12.0))
-                                .text_color(rgba(t.icon_muted)),
-                        ),
-                )
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .font_weight(FontWeight::BOLD)
-                        .text_color(rgba(t.text))
-                        .child(SharedString::from("Changes")),
-                )
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.toggle_git_repo_section(cx);
-                }));
+                        .px(px(20.0))
+                        .py(px(10.0))
+                        .text_size(px(12.5))
+                        .text_color(rgba(t.text_muted))
+                        .child(SharedString::from("No changes — working tree clean")),
+                );
+            }
 
-            body = body.child(repo_section_header);
-
-            if repo_section_expanded {
-                body = body.child(commit_box(commit_input, &branch, t, window, cx));
+            if !conflicts.is_empty() {
+                let actions = vec![section_action(
+                    "git-conflicts-stage-all-btn",
+                    "ui_icons/plus_tint.svg",
+                    "Stage All (Mark All Resolved)",
+                    GitStageAll,
+                    t,
+                    cx,
+                )
+                .into_any_element()];
+                body = body.child(section_header(
+                    "git-conflicts-header",
+                    "Merge Conflicts",
+                    params.conflicts_expanded,
+                    Some(conflicts.len()),
+                    GitSection::Conflicts,
+                    actions,
+                    t,
+                    cx,
+                ));
+                if params.conflicts_expanded {
+                    body = body.child(div().flex().flex_col().children(
+                        conflicts.iter().map(|c| {
+                            change_row(c, RowSection::Conflict, "git-conflict-row", t, cx)
+                        }),
+                    ));
+                }
             }
 
             if !staged.is_empty() {
-                let staged_chevron = if staged_expanded {
-                    "ui_icons/chevron-down_tint.svg"
-                } else {
-                    "ui_icons/chevron-right_tint.svg"
-                };
-
-                let staged_header = div()
-                    .id("git-staged-header")
-                    .group("git-staged-header")
-                    .h(px(26.0))
-                    .px(px(8.0))
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .justify_between()
-                    .cursor_pointer()
-                    .hover(|s| s.bg(rgba(t.ghost_hover)))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .gap(px(4.0))
-                            .child(
-                                div()
-                                    .w(px(16.0))
-                                    .h(px(16.0))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .child(
-                                        svg()
-                                            .path(staged_chevron)
-                                            .w(px(12.0))
-                                            .h(px(12.0))
-                                            .text_color(rgba(t.icon_muted)),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(12.0))
-                                    .font_weight(FontWeight::BOLD)
-                                    .text_color(rgba(t.text))
-                                    .child(SharedString::from("Staged Changes")),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .gap(px(4.0))
-                            .child(
-                                section_action(
-                                    "git-unstage-all-btn",
-                                    "ui_icons/minus_tint.svg",
-                                    "Unstage All Changes",
-                                    GitUnstageAll,
-                                    t,
-                                    cx,
-                                )
-                                .invisible()
-                                .group_hover("git-staged-header", |s| s.visible()),
-                            )
-                            .child(badge(staged.len())),
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.toggle_git_staged_section(cx);
-                    }));
-
-                body = body.child(staged_header);
-
-                if staged_expanded {
+                let actions = vec![section_action(
+                    "git-unstage-all-btn",
+                    "ui_icons/minus_tint.svg",
+                    "Unstage All Changes",
+                    GitUnstageAll,
+                    t,
+                    cx,
+                )
+                .into_any_element()];
+                body = body.child(section_header(
+                    "git-staged-header",
+                    "Staged Changes",
+                    params.staged_expanded,
+                    Some(staged.len()),
+                    GitSection::Staged,
+                    actions,
+                    t,
+                    cx,
+                ));
+                if params.staged_expanded {
                     body = body.child(
                         div().flex().flex_col().children(
                             staged
                                 .iter()
-                                .map(|c| change_row(c, true, "git-staged-row", t, cx)),
+                                .map(|c| change_row(c, RowSection::Staged, "git-staged-row", t, cx)),
                         ),
                     );
                 }
             }
 
-            let changes_chevron = if changes_expanded {
-                "ui_icons/chevron-down_tint.svg"
-            } else {
-                "ui_icons/chevron-right_tint.svg"
-            };
-
-            let changes_header = div()
-                .id("git-changes-header")
-                .group("git-changes-header")
-                .h(px(26.0))
-                .px(px(8.0))
-                .flex()
-                .flex_row()
-                .items_center()
-                .justify_between()
-                .cursor_pointer()
-                .hover(|s| s.bg(rgba(t.ghost_hover)))
-                .child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(4.0))
-                        .child(
-                            div()
-                                .w(px(16.0))
-                                .h(px(16.0))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .child(
-                                    svg()
-                                        .path(changes_chevron)
-                                        .w(px(12.0))
-                                        .h(px(12.0))
-                                        .text_color(rgba(t.icon_muted)),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(12.0))
-                                .font_weight(FontWeight::BOLD)
-                                .text_color(rgba(t.text))
-                                .child(SharedString::from("Changes")),
+            if !unstaged.is_empty() {
+                let actions = vec![
+                    section_action(
+                        "git-discard-all-btn",
+                        "ui_icons/discard_tint.svg",
+                        "Discard All Changes",
+                        GitDiscardAll,
+                        t,
+                        cx,
+                    )
+                    .into_any_element(),
+                    section_action(
+                        "git-stage-all-btn",
+                        "ui_icons/plus_tint.svg",
+                        "Stage All Changes",
+                        GitStageAll,
+                        t,
+                        cx,
+                    )
+                    .into_any_element(),
+                ];
+                body = body.child(section_header(
+                    "git-changes-header",
+                    "Changes",
+                    params.changes_expanded,
+                    Some(unstaged.len()),
+                    GitSection::Changes,
+                    actions,
+                    t,
+                    cx,
+                ));
+                if params.changes_expanded {
+                    body = body.child(
+                        div().flex().flex_col().children(
+                            unstaged.iter().map(|c| {
+                                change_row(c, RowSection::Unstaged, "git-change-row", t, cx)
+                            }),
                         ),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(4.0))
-                        .child(
-                            div()
-                                .flex()
-                                .flex_row()
-                                .items_center()
-                                .gap(px(2.0))
-                                .invisible()
-                                .group_hover("git-changes-header", |s| s.visible())
-                                .child(section_action(
-                                    "git-discard-all-btn",
-                                    "ui_icons/discard_tint.svg",
-                                    "Discard All Changes",
-                                    GitDiscardAll,
-                                    t,
-                                    cx,
-                                ))
-                                .child(section_action(
-                                    "git-stage-all-btn",
-                                    "ui_icons/plus_tint.svg",
-                                    "Stage All Changes",
-                                    GitStageAll,
-                                    t,
-                                    cx,
-                                )),
-                        )
-                        .child(badge(unstaged.len())),
-                )
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.toggle_git_changes_section(cx);
-                }));
+                    );
+                }
+            }
 
-            body = body.child(changes_header);
-
-            if changes_expanded {
-                body = body.child(
-                    div().flex().flex_col().children(
-                        unstaged
-                            .iter()
-                            .map(|c| change_row(c, false, "git-change-row", t, cx)),
-                    ),
-                );
+            if !untracked.is_empty() {
+                let actions = vec![section_action(
+                    "git-untracked-stage-all-btn",
+                    "ui_icons/plus_tint.svg",
+                    "Stage All Untracked Files",
+                    GitStageAll,
+                    t,
+                    cx,
+                )
+                .into_any_element()];
+                body = body.child(section_header(
+                    "git-untracked-header",
+                    "Untracked",
+                    params.untracked_expanded,
+                    Some(untracked.len()),
+                    GitSection::Untracked,
+                    actions,
+                    t,
+                    cx,
+                ));
+                if params.untracked_expanded {
+                    body = body.child(div().flex().flex_col().children(
+                        untracked.iter().map(|c| {
+                            change_row(c, RowSection::Untracked, "git-untracked-row", t, cx)
+                        }),
+                    ));
+                }
             }
 
             col = col.child(body);
@@ -356,11 +326,252 @@ fn header(t: &Colors, _window: &mut Window, _cx: &mut Context<Workspace>) -> imp
                 )
                 .context_menu(|menu, _window, _cx| {
                     menu.menu("Refresh", Box::new(GitRefresh))
+                        .separator()
+                        .menu("Fetch", Box::new(GitFetch))
+                        .menu("Pull", Box::new(GitPull))
+                        .menu("Push", Box::new(GitPush))
+                        .menu("Force Push (with lease)", Box::new(GitForcePush))
+                        .separator()
+                        .menu("Checkout Branch…", Box::new(GitBranchPicker))
+                        .separator()
+                        .menu("Stash Changes", Box::new(GitStashPush))
+                        .menu("Pop Stash", Box::new(GitStashPop))
+                        .separator()
+                        .menu("Commit All (Tracked)", Box::new(GitCommitAll))
+                        .menu("Amend Last Commit", Box::new(GitCommitAmend))
+                        .separator()
                         .menu("Stage All Changes", Box::new(GitStageAll))
                         .menu("Unstage All Changes", Box::new(GitUnstageAll))
                         .menu("Discard All Changes", Box::new(GitDiscardAll))
                 }),
         )
+}
+
+/// Branch + sync strip: current branch (click to switch), ahead/behind
+/// counts, and fetch / pull / push shortcuts. Mirrors the top strip of
+/// Zed's git panel.
+fn branch_row(
+    repo: &RepoStatus,
+    op_running: Option<&'static str>,
+    t: &Colors,
+    cx: &mut Context<Workspace>,
+) -> impl IntoElement {
+    let branch = repo.branch.clone().unwrap_or_else(|| "(no branch)".into());
+    let branch_label = if repo.detached {
+        format!("{branch} (detached)")
+    } else {
+        branch
+    };
+
+    let mut row = div()
+        .h(px(30.0))
+        .px(px(12.0))
+        .flex()
+        .flex_row()
+        .items_center()
+        .justify_between()
+        .border_b_1()
+        .border_color(rgba(t.border_variant));
+
+    let mut left = div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(6.0))
+        .min_w(px(0.0))
+        .child(
+            div()
+                .id("git-branch-switcher")
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(5.0))
+                .px(px(4.0))
+                .py(px(2.0))
+                .rounded(px(3.0))
+                .cursor_pointer()
+                .hover(|s| s.bg(rgba(t.ghost_hover)))
+                .tooltip(|window, cx| {
+                    Tooltip::new("Switch Branch (create, checkout)").build(window, cx)
+                })
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.toggle_branch_picker(window, cx);
+                }))
+                .child(
+                    svg()
+                        .path("ui_icons/git_branch.svg")
+                        .w(px(13.0))
+                        .h(px(13.0))
+                        .text_color(rgba(t.text)),
+                )
+                .child(
+                    div()
+                        .max_w(px(150.0))
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .whitespace_nowrap()
+                        .text_size(px(12.5))
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(rgba(t.text))
+                        .child(SharedString::from(branch_label)),
+                ),
+        );
+
+    if repo.ahead > 0 || repo.behind > 0 {
+        left = left.child(
+            div()
+                .text_size(px(11.5))
+                .text_color(rgba(t.text_muted))
+                .child(SharedString::from(format!(
+                    "↑{} ↓{}",
+                    repo.ahead, repo.behind
+                ))),
+        );
+    }
+
+    row = row.child(left);
+
+    let right = if let Some(op) = op_running {
+        div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(4.0))
+            .text_size(px(11.5))
+            .text_color(rgba(t.text_accent))
+            .child(SharedString::from(format!("{op}…")))
+            .into_any_element()
+    } else {
+        div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(2.0))
+            .child(
+                row_icon_btn(
+                    SharedString::from("git-fetch-btn"),
+                    "ui_icons/refresh_tint.svg",
+                    "Fetch (git fetch --all --prune)",
+                    t,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.git_fetch(cx);
+                })),
+            )
+            .child(
+                row_icon_btn(
+                    SharedString::from("git-pull-btn"),
+                    "ui_icons/chevron-down_tint.svg",
+                    "Pull",
+                    t,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.git_pull(cx);
+                })),
+            )
+            .child(
+                row_icon_btn(
+                    SharedString::from("git-push-btn"),
+                    "ui_icons/chevron-up_tint.svg",
+                    "Push (publishes the branch when needed)",
+                    t,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.git_push(false, cx);
+                })),
+            )
+            .into_any_element()
+    };
+
+    row.child(right)
+}
+
+/// A collapsible section header: chevron + bold label on the left, hover
+/// actions + count badge on the right.
+#[allow(clippy::too_many_arguments)]
+fn section_header(
+    id: &'static str,
+    label: &'static str,
+    expanded: bool,
+    count: Option<usize>,
+    section: GitSection,
+    actions: Vec<AnyElement>,
+    t: &Colors,
+    cx: &mut Context<Workspace>,
+) -> impl IntoElement {
+    let chevron = if expanded {
+        "ui_icons/chevron-down_tint.svg"
+    } else {
+        "ui_icons/chevron-right_tint.svg"
+    };
+
+    let label_color = if section == GitSection::Conflicts {
+        t.vc_deleted
+    } else {
+        t.text
+    };
+
+    let mut right = div().flex().flex_row().items_center().gap(px(4.0));
+    if !actions.is_empty() {
+        right = right.child(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(2.0))
+                .invisible()
+                .group_hover(id, |s| s.visible())
+                .children(actions),
+        );
+    }
+    if let Some(count) = count {
+        right = right.child(badge(count, t));
+    }
+
+    div()
+        .id(id)
+        .group(id)
+        .h(px(26.0))
+        .px(px(8.0))
+        .flex()
+        .flex_row()
+        .items_center()
+        .justify_between()
+        .cursor_pointer()
+        .hover(|s| s.bg(rgba(t.ghost_hover)))
+        .child(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(4.0))
+                .child(
+                    div()
+                        .w(px(16.0))
+                        .h(px(16.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            svg()
+                                .path(chevron)
+                                .w(px(12.0))
+                                .h(px(12.0))
+                                .text_color(rgba(t.icon_muted)),
+                        ),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.0))
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(rgba(label_color))
+                        .child(SharedString::from(label)),
+                ),
+        )
+        .child(right)
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.toggle_git_section(section, cx);
+        }))
 }
 
 fn section_action(
@@ -389,23 +600,24 @@ fn section_action(
                 .text_color(rgba(t.icon_muted)),
         )
         .on_click(cx.listener(move |_this, _, window, cx| {
+            cx.stop_propagation();
             window.dispatch_action(action.boxed_clone(), cx);
         }))
 }
 
-fn badge(count: usize) -> impl IntoElement {
+fn badge(count: usize, t: &Colors) -> impl IntoElement {
     div()
         .min_w(px(18.0))
         .h(px(18.0))
         .px(px(5.0))
         .rounded_full()
-        .bg(rgba(0x0078d4ff))
+        .bg(rgba(t.text_accent))
         .flex()
         .items_center()
         .justify_center()
         .text_size(px(11.5))
         .font_weight(FontWeight::BOLD)
-        .text_color(rgba(0xffffffff))
+        .text_color(rgba(t.background))
         .child(SharedString::from(count.to_string()))
 }
 
@@ -416,7 +628,7 @@ fn commit_box(
     _window: &mut Window,
     cx: &mut Context<Workspace>,
 ) -> impl IntoElement {
-    let placeholder_text = format!("Message (Ctrl+Enter to commit on \"{branch}\"...)");
+    let placeholder_text = format!("Message (Enter to commit on \"{branch}\")");
 
     let input_field = match input {
         Some(input) => div()
@@ -477,6 +689,10 @@ fn commit_box(
                 .text_size(px(13.0))
                 .font_weight(FontWeight::BOLD)
                 .text_color(rgba(0xffffffff))
+                .tooltip(|window, cx| {
+                    Tooltip::new("Commit staged changes (all tracked changes when nothing staged)")
+                        .build(window, cx)
+                })
                 .child(
                     div()
                         .flex()
@@ -498,25 +714,15 @@ fn commit_box(
         )
         .child(div().w(px(1.0)).h(px(20.0)).bg(rgba(0xffffff33)))
         .child(
-            div()
-                .id("git-commit-dropdown-btn")
-                .w(px(28.0))
-                .h_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .cursor_pointer()
-                .hover(|s| s.bg(rgba(0x0086e6ff)))
-                .child(
-                    svg()
-                        .path("ui_icons/chevron-down_tint.svg")
-                        .w(px(14.0))
-                        .h(px(14.0))
-                        .text_color(rgba(0xffffffff)),
-                )
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.git_commit(window, cx);
-                })),
+            Button::new("git-commit-dropdown-btn")
+                .ghost()
+                .compact()
+                .label("▾")
+                .text_color(rgba(0xffffffff))
+                .dropdown_menu(|menu, _window, _cx| {
+                    menu.menu("Commit All (Tracked)", Box::new(GitCommitAll))
+                        .menu("Amend Last Commit", Box::new(GitCommitAmend))
+                }),
         );
 
     div()
@@ -532,22 +738,22 @@ fn commit_box(
 
 fn change_row(
     change: &GitChange,
-    staged_section: bool,
+    section: RowSection,
     id_prefix: &'static str,
     t: &Colors,
     cx: &mut Context<Workspace>,
 ) -> impl IntoElement {
-    let letter = if staged_section {
-        change.staged_letter()
-    } else {
-        change.worktree_letter()
-    };
-    let kind = if staged_section {
-        change.index.unwrap_or(ChangeKind::Modified)
-    } else if change.is_untracked() {
-        ChangeKind::Untracked
-    } else {
-        change.worktree.unwrap_or(ChangeKind::Modified)
+    let (letter, kind) = match section {
+        RowSection::Conflict => ("!", ChangeKind::Conflicted),
+        RowSection::Staged => (
+            change.staged_letter(),
+            change.index.unwrap_or(ChangeKind::Modified),
+        ),
+        RowSection::Unstaged => (
+            change.worktree_letter(),
+            change.worktree.unwrap_or(ChangeKind::Modified),
+        ),
+        RowSection::Untracked => ("U", ChangeKind::Untracked),
     };
     let color = kind_color(kind, t);
 
@@ -557,12 +763,13 @@ fn change_row(
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| change.rel.trim_end_matches('/').to_string());
 
+    // Platform separator, not a hard-coded backslash.
     let parent_dir = rel_path.parent().and_then(|p| {
         let s = p.to_string_lossy();
         if s.is_empty() {
             None
         } else {
-            Some(s.replace('/', "\\"))
+            Some(s.replace(&['/', '\\'][..], &std::path::MAIN_SEPARATOR.to_string()))
         }
     });
 
@@ -575,6 +782,7 @@ fn change_row(
     let path = change.path.clone();
     let file_icon_path = file_icons::icon_for(rel_path);
 
+    let is_conflict = section == RowSection::Conflict;
     let mut row = div()
         .id((ElementId::from(id_prefix), change.rel.clone()))
         .group("git-row")
@@ -590,15 +798,21 @@ fn change_row(
         .hover(|s| s.bg(rgba(t.ghost_hover)))
         .on_click(cx.listener({
             let path = path.clone();
-            move |this, _, _, cx| {
-                this.open_diff(&path, cx);
+            move |this, _, window, cx| {
+                // A conflicted file needs editing, not diffing: open the
+                // buffer with its conflict markers.
+                if is_conflict {
+                    this.open_file(path.clone(), window, cx);
+                } else {
+                    this.open_diff(&path, cx);
+                }
             }
         }));
 
-    // Official File Type Icon
+    // Official file type icon.
     row = row.child(icon_img(file_icon_path, 18.0));
 
-    // File name and folder subpath
+    // File name, folder subpath, rename source.
     row = row.child(
         div()
             .flex_1()
@@ -614,7 +828,7 @@ fn change_row(
                     .text_ellipsis()
                     .whitespace_nowrap()
                     .text_size(px(13.5))
-                    .text_color(rgba(t.text))
+                    .text_color(rgba(if is_conflict { t.vc_deleted } else { t.text }))
                     .child(SharedString::from(name)),
             )
             .when_some(parent_dir, |d, parent| {
@@ -637,76 +851,79 @@ fn change_row(
             }),
     );
 
-    // Per-file actions shown on hover:
-    // In Changes section: Open File, Discard Changes (↺), Stage Changes (+)
-    // In Staged section: Open File, Unstage Changes (−)
+    // Per-file actions shown on hover.
     let path_open = path.clone();
     let path_discard = path.clone();
     let path_stage = path.clone();
     let path_unstage = path.clone();
     let rel = change.rel.clone();
 
-    if staged_section {
-        row = row.child(
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(2.0))
-                .invisible()
-                .group_hover("git-row", |s| s.visible())
-                .child(
-                    row_icon_btn(
-                        SharedString::from(format!("git-open-file-staged-{rel}")),
-                        "ui_icons/go-to-file_tint.svg",
-                        "Open File",
-                        t,
-                    )
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.open_file(path_open.clone(), window, cx);
-                    })),
+    let mut hover_actions = div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(2.0))
+        .invisible()
+        .group_hover("git-row", |s| s.visible());
+
+    hover_actions = hover_actions.child(
+        row_icon_btn(
+            SharedString::from(format!("git-open-file-{id_prefix}-{rel}")),
+            "ui_icons/go-to-file_tint.svg",
+            "Open File",
+            t,
+        )
+        .on_click(cx.listener(move |this, _, window, cx| {
+            cx.stop_propagation();
+            this.open_file(path_open.clone(), window, cx);
+        })),
+    );
+
+    match section {
+        RowSection::Staged => {
+            hover_actions = hover_actions.child(
+                row_icon_btn(
+                    SharedString::from(format!("git-unstage-file-{rel}")),
+                    "ui_icons/minus_tint.svg",
+                    "Unstage Changes",
+                    t,
                 )
-                .child(
-                    row_icon_btn(
-                        SharedString::from(format!("git-unstage-file-{rel}")),
-                        "ui_icons/minus_tint.svg",
-                        "Unstage Changes",
-                        t,
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.git_unstage_path(&path_unstage, cx);
-                    })),
-                ),
-        );
-    } else {
-        row = row.child(
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(2.0))
-                .invisible()
-                .group_hover("git-row", |s| s.visible())
-                .child(
-                    row_icon_btn(
-                        SharedString::from(format!("git-open-file-{rel}")),
-                        "ui_icons/go-to-file_tint.svg",
-                        "Open File",
-                        t,
-                    )
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.open_file(path_open.clone(), window, cx);
-                    })),
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.git_unstage_path(&path_unstage, cx);
+                })),
+            );
+        }
+        RowSection::Conflict => {
+            hover_actions = hover_actions.child(
+                row_icon_btn(
+                    SharedString::from(format!("git-resolve-file-{rel}")),
+                    "ui_icons/plus_tint.svg",
+                    "Stage (Mark as Resolved)",
+                    t,
                 )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.git_stage_path(&path_stage, cx);
+                })),
+            );
+        }
+        RowSection::Unstaged | RowSection::Untracked => {
+            hover_actions = hover_actions
                 .child(
                     row_icon_btn(
                         SharedString::from(format!("git-discard-file-{rel}")),
                         "ui_icons/discard_tint.svg",
-                        "Discard Changes",
+                        if section == RowSection::Untracked {
+                            "Delete File (untracked)"
+                        } else {
+                            "Discard Changes"
+                        },
                         t,
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.git_discard_path(&path_discard, cx);
+                        cx.stop_propagation();
+                        this.git_request_discard_path(&path_discard, cx);
                     })),
                 )
                 .child(
@@ -717,13 +934,16 @@ fn change_row(
                         t,
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
                         this.git_stage_path(&path_stage, cx);
                     })),
-                ),
-        );
+                );
+        }
     }
 
-    // Status letter on far right (e.g. M, U, A, D)
+    row = row.child(hover_actions);
+
+    // Status letter on the far right (M, U, A, D, R, !).
     row = row.child(
         div()
             .w(px(14.0))
@@ -743,8 +963,12 @@ fn change_row(
     let path_c3 = change.path.clone();
     let path_c4 = change.path.clone();
     let path_c5 = change.path.clone();
-    let is_staged = change.is_staged();
-    let is_untracked = change.is_untracked();
+    let is_staged_row = section == RowSection::Staged;
+    let can_stage = matches!(
+        section,
+        RowSection::Unstaged | RowSection::Untracked | RowSection::Conflict
+    );
+    let can_discard = matches!(section, RowSection::Unstaged | RowSection::Untracked);
 
     row.context_menu(move |menu, _window, _cx| {
         menu.menu(
@@ -760,7 +984,7 @@ fn change_row(
             }),
         )
         .separator()
-        .when(!is_staged && !is_untracked, |m| {
+        .when(can_stage, |m| {
             m.menu(
                 "Stage Changes",
                 Box::new(GitStageFile {
@@ -768,7 +992,7 @@ fn change_row(
                 }),
             )
         })
-        .when(is_staged, |m| {
+        .when(is_staged_row, |m| {
             m.menu(
                 "Unstage Changes",
                 Box::new(GitUnstageFile {
@@ -776,7 +1000,7 @@ fn change_row(
                 }),
             )
         })
-        .when(!is_untracked, |m| {
+        .when(can_discard, |m| {
             m.menu(
                 "Discard Changes",
                 Box::new(GitDiscardFile {
@@ -840,4 +1064,150 @@ fn empty_state(message: &str, t: &Colors) -> impl IntoElement {
                 .text_color(rgba(t.text_muted))
                 .child(SharedString::from(message.to_string())),
         )
+}
+
+/// Empty state when a folder is open but not a repository: offer `git init`.
+fn init_repo_state(t: &Colors, cx: &mut Context<Workspace>) -> impl IntoElement {
+    div()
+        .flex_1()
+        .w_full()
+        .flex()
+        .flex_col()
+        .items_center()
+        .justify_center()
+        .gap(px(12.0))
+        .px(px(20.0))
+        .child(
+            div()
+                .text_size(px(13.0))
+                .text_color(rgba(t.text_muted))
+                .child(SharedString::from(
+                    "This folder is not a Git repository yet.",
+                )),
+        )
+        .child(
+            div()
+                .id("git-init-btn")
+                .h(px(30.0))
+                .px(px(14.0))
+                .rounded(px(4.0))
+                .bg(rgba(0x0078d4ff))
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .hover(|s| s.bg(rgba(0x0086e6ff)))
+                .text_size(px(12.5))
+                .font_weight(FontWeight::BOLD)
+                .text_color(rgba(0xffffffff))
+                .child(SharedString::from("Initialize Repository"))
+                .on_click(cx.listener(|_this, _, window, cx| {
+                    window.dispatch_action(Box::new(GitInit), cx);
+                })),
+        )
+}
+
+/// Modal confirmation for destructive git actions (discard / delete).
+pub(crate) fn render_git_confirm(
+    confirm: &GitConfirm,
+    t: &Colors,
+    cx: &mut Context<Workspace>,
+) -> AnyElement {
+    div()
+        .id("git-confirm-backdrop")
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
+        .occlude()
+        .bg(rgba(0x00000088))
+        .flex()
+        .items_center()
+        .justify_center()
+        .on_mouse_down(
+            gpui::MouseButton::Left,
+            cx.listener(|this, _, _, cx| {
+                this.git_confirm_cancel(cx);
+                cx.stop_propagation();
+            }),
+        )
+        .child(
+            div()
+                .id("git-confirm-card")
+                .w(px(440.0))
+                .bg(rgba(t.panel))
+                .rounded(px(8.0))
+                .border_1()
+                .border_color(rgba(t.border))
+                .shadow_2xl()
+                .overflow_hidden()
+                .p(px(16.0))
+                .flex()
+                .flex_col()
+                .gap(px(10.0))
+                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
+                    cx.stop_propagation();
+                })
+                .child(
+                    div()
+                        .text_size(px(14.0))
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(rgba(t.text))
+                        .child(SharedString::from(confirm.title.clone())),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.5))
+                        .text_color(rgba(t.text_muted))
+                        .child(SharedString::from(confirm.detail.clone())),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .justify_end()
+                        .gap(px(8.0))
+                        .pt(px(6.0))
+                        .child(
+                            div()
+                                .id("git-confirm-cancel")
+                                .h(px(28.0))
+                                .px(px(12.0))
+                                .rounded(px(4.0))
+                                .bg(rgba(t.element_bg))
+                                .border_1()
+                                .border_color(rgba(t.border))
+                                .flex()
+                                .items_center()
+                                .cursor_pointer()
+                                .hover(|s| s.bg(rgba(t.element_hover)))
+                                .text_size(px(12.5))
+                                .text_color(rgba(t.text))
+                                .child(SharedString::from("Cancel"))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.git_confirm_cancel(cx);
+                                })),
+                        )
+                        .child(
+                            div()
+                                .id("git-confirm-accept")
+                                .h(px(28.0))
+                                .px(px(12.0))
+                                .rounded(px(4.0))
+                                .bg(rgba(t.vc_deleted))
+                                .flex()
+                                .items_center()
+                                .cursor_pointer()
+                                .hover(|s| s.opacity(0.9))
+                                .text_size(px(12.5))
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(rgba(0xffffffff))
+                                .child(SharedString::from(confirm.confirm_label.clone()))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.git_confirm_accept(cx);
+                                })),
+                        ),
+                ),
+        )
+        .into_any_element()
 }

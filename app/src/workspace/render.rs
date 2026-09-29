@@ -205,9 +205,16 @@ impl Render for Workspace {
         let git_repo = self.git.as_ref();
         let git_changes = git_repo.map(|g| g.change_count()).unwrap_or(0);
         let git_branch = git_repo.and_then(|g| g.branch.clone());
+        let git_sync = git_repo.and_then(|g| {
+            (g.ahead > 0 || g.behind > 0).then_some((g.ahead, g.behind))
+        });
         let git_repo_section_expanded = self.git_repo_section_expanded;
+        let git_conflicts_expanded = self.git_conflicts_expanded;
         let git_staged_expanded = self.git_staged_expanded;
         let git_changes_expanded = self.git_changes_expanded;
+        let git_untracked_expanded = self.git_untracked_expanded;
+        let git_op_running = self.git_op_running;
+        let git_path_kinds = self.git_path_kinds.clone();
         let split_diff = self.split_diff;
         let git_commit_input = self.git_commit_input.clone();
 
@@ -396,7 +403,7 @@ impl Render for Workspace {
                 this.git_unstage_all(cx);
             }))
             .on_action(cx.listener(|this, _: &GitDiscardAll, _, cx| {
-                this.git_discard_all(cx);
+                this.git_request_discard_all(cx);
             }))
             .on_action(cx.listener(|this, action: &GitStageFile, _, cx| {
                 this.git_stage_path(&action.path, cx);
@@ -405,7 +412,7 @@ impl Render for Workspace {
                 this.git_unstage_path(&action.path, cx);
             }))
             .on_action(cx.listener(|this, action: &GitDiscardFile, _, cx| {
-                this.git_discard_path(&action.path, cx);
+                this.git_request_discard_path(&action.path, cx);
             }))
             .on_action(cx.listener(|this, action: &GitOpenDiff, _, cx| {
                 this.open_diff(&action.path, cx);
@@ -415,6 +422,36 @@ impl Render for Workspace {
             }))
             .on_action(cx.listener(|this, _: &GitCommit, window, cx| {
                 this.git_commit(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &GitCommitAll, window, cx| {
+                this.git_commit_all(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &GitCommitAmend, window, cx| {
+                this.git_commit_amend(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &GitFetch, _, cx| {
+                this.git_fetch(cx);
+            }))
+            .on_action(cx.listener(|this, _: &GitPull, _, cx| {
+                this.git_pull(cx);
+            }))
+            .on_action(cx.listener(|this, _: &GitPush, _, cx| {
+                this.git_push(false, cx);
+            }))
+            .on_action(cx.listener(|this, _: &GitForcePush, _, cx| {
+                this.git_push(true, cx);
+            }))
+            .on_action(cx.listener(|this, _: &GitStashPush, _, cx| {
+                this.git_stash_push(cx);
+            }))
+            .on_action(cx.listener(|this, _: &GitStashPop, _, cx| {
+                this.git_stash_pop(cx);
+            }))
+            .on_action(cx.listener(|this, _: &GitInit, _, cx| {
+                this.git_init(cx);
+            }))
+            .on_action(cx.listener(|this, _: &GitBranchPicker, window, cx| {
+                this.toggle_branch_picker(window, cx);
             }))
             .on_action(cx.listener(|this, _: &ToggleFileFinder, window, cx| {
                 this.toggle_file_finder(window, cx);
@@ -490,6 +527,7 @@ impl Render for Workspace {
                                             inline_creating,
                                             inline_renaming,
                                             root_display_shared,
+                                            git_path_kinds.clone(),
                                             &t,
                                             cx,
                                         ),
@@ -499,11 +537,17 @@ impl Render for Workspace {
                                         ui::sidebar::search::render_search_panel(self, window, cx)
                                     }
                                     Activity::Git => ui::sidebar::git::render_git_panel(
-                                        git_commit_input.as_ref(),
-                                        git_repo,
-                                        git_repo_section_expanded,
-                                        git_staged_expanded,
-                                        git_changes_expanded,
+                                        ui::sidebar::git::GitPanelParams {
+                                            commit_input: git_commit_input.as_ref(),
+                                            repo: git_repo,
+                                            has_root: root_opt.is_some(),
+                                            repo_section_expanded: git_repo_section_expanded,
+                                            conflicts_expanded: git_conflicts_expanded,
+                                            staged_expanded: git_staged_expanded,
+                                            changes_expanded: git_changes_expanded,
+                                            untracked_expanded: git_untracked_expanded,
+                                            op_running: git_op_running,
+                                        },
                                         &t,
                                         window,
                                         cx,
@@ -659,6 +703,7 @@ impl Render for Workspace {
                 theme_name,
                 git_branch.as_deref(),
                 git_changes,
+                git_sync,
                 cursor_pos,
                 diagnostic_counts,
                 lang_id,
@@ -804,6 +849,10 @@ impl Render for Workspace {
             .when(self.picker.is_some(), |root| {
                 let picker = self.picker.as_ref().unwrap();
                 root.child(ui::picker::render_picker(picker, &t, cx))
+            })
+            .when(self.git_confirm.is_some(), |root| {
+                let confirm = self.git_confirm.clone().unwrap();
+                root.child(ui::sidebar::git::render_git_confirm(&confirm, &t, cx))
             })
     }
 }

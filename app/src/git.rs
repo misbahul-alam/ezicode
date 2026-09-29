@@ -23,7 +23,9 @@ impl ChangeKind {
             ChangeKind::Copied => "C",
             ChangeKind::TypeChanged => "T",
             ChangeKind::Untracked => "U",
-            ChangeKind::Conflicted => "C",
+            // VS Code and Zed both mark conflicted paths with "!", which also
+            // keeps the letter distinct from Copied.
+            ChangeKind::Conflicted => "!",
         }
     }
 }
@@ -43,6 +45,10 @@ pub struct GitChange {
     pub worktree: Option<ChangeKind>,
     /// True when the file is untracked (`??`).
     pub untracked: bool,
+    /// True when the entry is an unmerged (conflicted) path. Porcelain marks
+    /// these with the XY pairs DD, AU, UD, UA, DU, AA and UU — a plain
+    /// per-column read would misfile `AA`/`DD` as staged adds/deletes.
+    pub conflicted: bool,
 }
 
 impl GitChange {
@@ -52,6 +58,10 @@ impl GitChange {
 
     pub fn is_untracked(&self) -> bool {
         self.untracked
+    }
+
+    pub fn is_conflicted(&self) -> bool {
+        self.conflicted
     }
 
     /// Letter shown next to the file in the STAGED CHANGES section.
@@ -68,11 +78,18 @@ impl GitChange {
     }
 }
 
-/// Snapshot of one repository: branch + changed files.
+/// Snapshot of one repository: branch + changed files + sync state.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct RepoStatus {
     pub root: PathBuf,
     pub branch: Option<String>,
+    /// Upstream ref (e.g. `origin/main`) when the branch tracks one.
+    pub upstream: Option<String>,
+    /// Commits ahead of / behind the upstream.
+    pub ahead: u32,
+    pub behind: u32,
+    /// True on a detached HEAD (branch then holds the short SHA).
+    pub detached: bool,
     pub changes: Vec<GitChange>,
 }
 
@@ -82,7 +99,22 @@ impl RepoStatus {
     }
 
     pub fn staged_count(&self) -> usize {
-        self.changes.iter().filter(|c| c.is_staged()).count()
+        self.changes
+            .iter()
+            .filter(|c| c.is_staged() && !c.is_conflicted())
+            .count()
+    }
+
+    pub fn conflict_count(&self) -> usize {
+        self.changes.iter().filter(|c| c.is_conflicted()).count()
+    }
+
+    /// Tracked, non-conflicted files with worktree edits ("commit all" scope).
+    pub fn tracked_dirty_count(&self) -> usize {
+        self.changes
+            .iter()
+            .filter(|c| !c.is_untracked() && !c.is_conflicted() && c.worktree.is_some())
+            .count()
     }
 }
 
@@ -130,42 +162,93 @@ pub fn status(root: &Path) -> Option<RepoStatus> {
             "--porcelain=v1",
             "-z",
             "--branch",
-            "--untracked-files=normal",
+            // `all` lists every file inside an untracked directory instead of
+            // collapsing it to `dir/` — matching Zed's panel, where each new
+            // file is individually stageable and diffable.
+            "--untracked-files=all",
         ],
     )?;
     if !ok {
         return None;
     }
-    let branch = branch_from_porcelain(&raw).or_else(|| branch(root));
+    let header = parse_branch_header(&raw);
+    let branch = header.branch.clone().or_else(|| branch(root));
     Some(RepoStatus {
         root: root.to_path_buf(),
         branch,
+        upstream: header.upstream,
+        ahead: header.ahead,
+        behind: header.behind,
+        detached: header.detached,
         changes: parse_porcelain(&raw, root),
     })
 }
 
-/// Extract the current branch from the `## ` header record emitted by
+/// Parsed form of the `## ` header record emitted by
 /// `git status --porcelain --branch`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BranchHeader {
+    pub branch: Option<String>,
+    pub upstream: Option<String>,
+    pub ahead: u32,
+    pub behind: u32,
+    pub detached: bool,
+}
+
+/// Extract branch + tracking info from the porcelain `## ` header.
 ///
 /// Header shapes (git 2.x): `## main`, `## main...origin/main`,
-/// `## main...origin/main [ahead 1]`, `## No commits yet on main`, and
-/// `## HEAD (no branch)` on a detached HEAD. Returns `None` when the header
-/// is missing or detached, so the caller can fall back to `rev-parse`.
-fn branch_from_porcelain(raw: &str) -> Option<String> {
-    let header = raw.split('\0').next()?;
-    let name = header.strip_prefix("## ")?;
+/// `## main...origin/main [ahead 1]`, `## main...origin/main [ahead 1, behind 2]`,
+/// `## main...origin/main [gone]`, `## No commits yet on main`, and
+/// `## HEAD (no branch)` on a detached HEAD. `branch` stays `None` when the
+/// header is missing or detached, so the caller can fall back to `rev-parse`.
+pub fn parse_branch_header(raw: &str) -> BranchHeader {
+    let mut out = BranchHeader::default();
+    let Some(header) = raw.split('\0').next() else {
+        return out;
+    };
+    let Some(name) = header.strip_prefix("## ") else {
+        return out;
+    };
     // Fresh repository with no commits yet.
     if let Some(rest) = name.strip_prefix("No commits yet on ") {
-        let name = rest.trim();
-        return (!name.is_empty()).then(|| name.to_string());
+        let rest = rest.trim();
+        if !rest.is_empty() {
+            out.branch = Some(rest.to_string());
+        }
+        return out;
     }
-    // `<local>...<remote> [tracking info]` — keep only the local side.
-    let name = name.split("...").next().unwrap_or("").trim();
-    if name.is_empty() || name.contains(' ') {
-        // `HEAD (no branch)` — detached HEAD; let rev-parse resolve it.
-        return None;
+    if name.starts_with("HEAD (no branch)") {
+        out.detached = true;
+        return out;
     }
-    Some(name.to_string())
+    // `<local>...<upstream> [tracking info]`.
+    let (name_part, bracket) = match name.split_once(" [") {
+        Some((n, b)) => (n, Some(b.trim_end_matches(']'))),
+        None => (name, None),
+    };
+    let (local, upstream) = match name_part.split_once("...") {
+        Some((l, u)) => (l.trim(), Some(u.trim().to_string())),
+        None => (name_part.trim(), None),
+    };
+    if !local.is_empty() && !local.contains(' ') {
+        out.branch = Some(local.to_string());
+    }
+    out.upstream = upstream.filter(|u| !u.is_empty());
+    if let Some(bracket) = bracket {
+        for part in bracket.split(',') {
+            let part = part.trim();
+            if let Some(n) = part.strip_prefix("ahead ") {
+                out.ahead = n.trim().parse().unwrap_or(0);
+            } else if let Some(n) = part.strip_prefix("behind ") {
+                out.behind = n.trim().parse().unwrap_or(0);
+            } else if part == "gone" {
+                // Upstream ref was deleted; keep the name but report no
+                // ahead/behind counts (git prints none in this case anyway).
+            }
+        }
+    }
+    out
 }
 
 /// Parse `git status --porcelain=v1 -z` output into [`GitChange`]s.
@@ -177,21 +260,30 @@ fn branch_from_porcelain(raw: &str) -> Option<String> {
 pub fn parse_porcelain(raw: &str, root: &Path) -> Vec<GitChange> {
     let records: Vec<&str> = raw.split('\0').filter(|r| !r.is_empty()).collect();
     let mut out: Vec<GitChange> = Vec::new();
+    // Set right after pushing a rename/copy entry: the *next* record is
+    // always its bare source path. Tracking this explicitly (instead of
+    // sniffing whether a record "looks like" a status entry) means a source
+    // path whose third byte happens to be a space, like `ab cd.txt`, can no
+    // longer be misparsed as a bogus status record.
+    let mut expect_rename_source = false;
 
     for rec in records {
+        if expect_rename_source {
+            expect_rename_source = false;
+            if let Some(last) = out.last_mut() {
+                last.old_rel = Some(rec.to_string());
+            }
+            continue;
+        }
         // `--branch` prepends a `## <branch>` header record; it is parsed
-        // separately by `branch_from_porcelain` and skipped here (its third
+        // separately by `parse_branch_header` and skipped here (its third
         // byte is a space too, so without this guard it would be misread as
         // a bogus `##` change entry).
         if rec.starts_with("## ") {
             continue;
         }
-        let is_status_record = rec.len() >= 3 && rec.as_bytes().get(2) == Some(&b' ');
-        if !is_status_record {
-            // Rename/copy continuation: the previous (source) name.
-            if let Some(last) = out.last_mut() {
-                last.old_rel = Some(rec.to_string());
-            }
+        // Malformed / non-status record: ignore rather than guess.
+        if rec.len() < 4 || rec.as_bytes()[2] != b' ' {
             continue;
         }
 
@@ -201,14 +293,25 @@ pub fn parse_porcelain(raw: &str, root: &Path) -> Vec<GitChange> {
         let y = xy.as_bytes()[1] as char;
 
         let untracked = x == '?' || y == '?';
+        let conflicted = matches!(xy, "DD" | "AU" | "UD" | "UA" | "DU" | "AA" | "UU");
         out.push(GitChange {
             path: root.join(path),
             rel: path.to_string(),
             old_rel: None,
-            index: kind_of(x),
-            worktree: if untracked { None } else { kind_of(y) },
+            index: if conflicted { None } else { kind_of(x) },
+            worktree: if untracked {
+                None
+            } else if conflicted {
+                Some(ChangeKind::Conflicted)
+            } else {
+                kind_of(y)
+            },
             untracked,
+            conflicted,
         });
+        if x == 'R' || x == 'C' || y == 'R' || y == 'C' {
+            expect_rename_source = true;
+        }
     }
     out
 }
@@ -450,9 +553,153 @@ pub fn discard_untracked(root: &Path, rels: &[String]) -> bool {
 
 /// Commit the staged changes. `Ok(summary)` on success (git prints a
 /// "N files changed" summary to stdout), `Err(reason)` when git refuses.
-pub fn commit(root: &Path, message: &str) -> Result<String, String> {
+///
+/// `all` adds `--all` (commit every tracked change, staged or not).
+/// `amend` rewrites the previous commit; with an empty `message` the old
+/// message is kept (`--no-edit`), otherwise it is replaced.
+pub fn commit(root: &Path, message: &str, amend: bool, all: bool) -> Result<String, String> {
+    let mut args: Vec<&str> = vec!["commit"];
+    if all {
+        args.push("--all");
+    }
+    if amend {
+        args.push("--amend");
+    }
+    if amend && message.is_empty() {
+        args.push("--no-edit");
+    } else {
+        args.push("-m");
+        args.push(message);
+    }
+    run_git_result(root, &args)
+}
+
+// -- Remote + branch + stash operations --------------------------------------
+
+/// `git fetch --all --prune`.
+pub fn fetch(root: &Path) -> Result<String, String> {
+    run_git_result(root, &["fetch", "--all", "--prune"])
+}
+
+/// `git pull` on the current branch.
+pub fn pull(root: &Path) -> Result<String, String> {
+    run_git_result(root, &["pull"])
+}
+
+/// Push the current branch. Publishes it (`-u origin <branch>`) when it has
+/// no upstream yet; `force` uses `--force-with-lease`, which refuses to
+/// clobber commits fetched since the last sync.
+pub fn push(
+    root: &Path,
+    branch: Option<&str>,
+    has_upstream: bool,
+    force: bool,
+) -> Result<String, String> {
+    let mut args: Vec<&str> = vec!["push"];
+    if force {
+        args.push("--force-with-lease");
+    }
+    if !has_upstream {
+        if let Some(branch) = branch {
+            args.push("--set-upstream");
+            args.push("origin");
+            args.push(branch);
+        }
+    }
+    run_git_result(root, &args)
+}
+
+/// One local branch, as listed by [`branches`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Branch {
+    pub name: String,
+    pub is_current: bool,
+    pub upstream: Option<String>,
+    /// Relative age of the last commit, e.g. "3 days ago".
+    pub last_commit: String,
+}
+
+/// Local branches, most recently committed first.
+pub fn branches(root: &Path) -> Vec<Branch> {
+    let raw = run_git(
+        root,
+        &[
+            "for-each-ref",
+            "refs/heads",
+            "--sort=-committerdate",
+            "--format=%(HEAD)\t%(refname:short)\t%(upstream:short)\t%(committerdate:relative)",
+        ],
+    );
+    match raw {
+        Some((out, true)) => parse_branches(&out),
+        _ => Vec::new(),
+    }
+}
+
+/// Parse `for-each-ref` output: `HEAD-marker \t name \t upstream \t age`.
+pub fn parse_branches(raw: &str) -> Vec<Branch> {
+    raw.lines()
+        .filter_map(|line| {
+            let mut fields = line.split('\t');
+            let head = fields.next()?;
+            let name = fields.next()?.trim();
+            if name.is_empty() {
+                return None;
+            }
+            let upstream = fields.next().unwrap_or("").trim();
+            let last_commit = fields.next().unwrap_or("").trim();
+            Some(Branch {
+                name: name.to_string(),
+                is_current: head == "*",
+                upstream: (!upstream.is_empty()).then(|| upstream.to_string()),
+                last_commit: last_commit.to_string(),
+            })
+        })
+        .collect()
+}
+
+/// `git checkout <name>`.
+pub fn checkout(root: &Path, name: &str) -> Result<String, String> {
+    run_git_result(root, &["checkout", name])
+}
+
+/// Create a branch off HEAD and switch to it (`git checkout -b`).
+pub fn create_branch(root: &Path, name: &str) -> Result<String, String> {
+    run_git_result(root, &["checkout", "-b", name])
+}
+
+/// Delete a fully merged branch (`git branch -d`); git's own error explains
+/// when the branch is unmerged, rather than silently forcing `-D`.
+pub fn delete_branch(root: &Path, name: &str) -> Result<String, String> {
+    run_git_result(root, &["branch", "-d", name])
+}
+
+/// Stash the working tree, untracked files included.
+pub fn stash_push(root: &Path) -> Result<String, String> {
+    run_git_result(root, &["stash", "push", "--include-untracked"])
+}
+
+/// Pop the most recent stash entry.
+pub fn stash_pop(root: &Path) -> Result<String, String> {
+    run_git_result(root, &["stash", "pop"])
+}
+
+/// `git init` in `root` (for the "no repository" empty state).
+pub fn init(root: &Path) -> Result<String, String> {
+    run_git_result(root, &["init"])
+}
+
+/// Run git and translate the exit status into a `Result`, so no failure can
+/// pass silently: `Ok(stdout)` on success, `Err(stderr-or-stdout)` otherwise.
+/// Never blocks the UI thread by itself — callers run it on a background
+/// thread.
+fn run_git_result(root: &Path, args: &[&str]) -> Result<String, String> {
     let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(root).arg("commit").arg("-m").arg(message);
+    cmd.arg("-C")
+        .arg(root)
+        .arg("-c")
+        .arg("core.quotepath=false");
+    cmd.args(args);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
     let out = cmd
@@ -461,7 +708,19 @@ pub fn commit(root: &Path, message: &str) -> Result<String, String> {
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
     } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        if !err.is_empty() {
+            return Err(err);
+        }
+        let out_text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !out_text.is_empty() {
+            return Err(out_text);
+        }
+        Err(format!(
+            "git {} failed (exit {:?})",
+            args.first().unwrap_or(&""),
+            out.status.code()
+        ))
     }
 }
 
@@ -507,23 +766,49 @@ mod tests {
     #[test]
     fn extracts_branch_from_header() {
         assert_eq!(
-            branch_from_porcelain("## main\0 M a.rs\0"),
+            parse_branch_header("## main\0 M a.rs\0").branch,
             Some("main".to_string())
         );
+
+        let tracking = parse_branch_header("## main...origin/main [ahead 1]\0");
+        assert_eq!(tracking.branch, Some("main".to_string()));
+        assert_eq!(tracking.upstream, Some("origin/main".to_string()));
+        assert_eq!(tracking.ahead, 1);
+        assert_eq!(tracking.behind, 0);
 
         assert_eq!(
-            branch_from_porcelain("## main...origin/main [ahead 1]\0"),
+            parse_branch_header("## No commits yet on main\0").branch,
             Some("main".to_string())
         );
 
-        assert_eq!(
-            branch_from_porcelain("## No commits yet on main\0"),
-            Some("main".to_string())
-        );
+        let detached = parse_branch_header("## HEAD (no branch)\0");
+        assert_eq!(detached.branch, None);
+        assert!(detached.detached);
 
-        assert_eq!(branch_from_porcelain("## HEAD (no branch)\0"), None);
+        assert_eq!(parse_branch_header(" M a.rs\0"), BranchHeader::default());
+    }
 
-        assert_eq!(branch_from_porcelain(" M a.rs\0"), None);
+    #[test]
+    fn extracts_ahead_behind_and_gone_upstreams() {
+        let both = parse_branch_header("## feat/x...origin/feat/x [ahead 3, behind 2]\0");
+        assert_eq!(both.branch, Some("feat/x".to_string()));
+        assert_eq!(both.upstream, Some("origin/feat/x".to_string()));
+        assert_eq!(both.ahead, 3);
+        assert_eq!(both.behind, 2);
+
+        let behind_only = parse_branch_header("## main...origin/main [behind 4]\0");
+        assert_eq!(behind_only.ahead, 0);
+        assert_eq!(behind_only.behind, 4);
+
+        let gone = parse_branch_header("## main...origin/main [gone]\0");
+        assert_eq!(gone.branch, Some("main".to_string()));
+        assert_eq!(gone.upstream, Some("origin/main".to_string()));
+        assert_eq!(gone.ahead, 0);
+        assert_eq!(gone.behind, 0);
+
+        let no_tracking = parse_branch_header("## main\0");
+        assert_eq!(no_tracking.upstream, None);
+        assert!(!no_tracking.detached);
     }
 
     #[test]
@@ -571,10 +856,55 @@ mod tests {
         let changes = parse_porcelain(raw, root());
         assert_eq!(changes[0].index, Some(ChangeKind::Deleted));
         assert_eq!(changes[1].index, Some(ChangeKind::Added));
-        assert_eq!(changes[2].index, Some(ChangeKind::Conflicted));
+        assert!(changes[2].is_conflicted());
+        assert_eq!(changes[2].index, None);
         assert_eq!(changes[2].worktree, Some(ChangeKind::Conflicted));
+        assert!(!changes[2].is_staged());
         assert_eq!(changes[3].rel, "dir/");
         assert!(changes[3].is_untracked());
+    }
+
+    #[test]
+    fn detects_every_conflict_pair() {
+        let raw = "DD a\0AU b\0UD c\0UA d\0DU e\0AA f\0UU g\0M  h\0";
+        let changes = parse_porcelain(raw, root());
+        assert_eq!(changes.len(), 8);
+        for change in &changes[..7] {
+            assert!(change.is_conflicted(), "{} not conflicted", change.rel);
+            assert!(!change.is_staged());
+        }
+        // `AA`/`DD` must not leak into the staged bucket as adds/deletes.
+        assert!(!changes[5].is_staged());
+        assert!(!changes[0].is_staged());
+        assert!(!changes[7].is_conflicted());
+        assert!(changes[7].is_staged());
+    }
+
+    #[test]
+    fn rename_source_with_space_at_third_byte_is_not_a_status_record() {
+        // Source path `ab cd.txt`: its third byte is a space, so shape
+        // sniffing alone would misread it as a status record.
+        let raw = "R  new.txt\0ab cd.txt\0 M other.rs\0";
+        let changes = parse_porcelain(raw, root());
+        assert_eq!(changes.len(), 2);
+        assert_eq!(changes[0].rel, "new.txt");
+        assert_eq!(changes[0].old_rel.as_deref(), Some("ab cd.txt"));
+        assert_eq!(changes[1].rel, "other.rs");
+    }
+
+    #[test]
+    fn parses_branch_lists() {
+        let raw = "*\tmain\torigin/main\t2 hours ago\n \tfeat/panel\t\t3 days ago\n";
+        let branches = parse_branches(raw);
+        assert_eq!(branches.len(), 2);
+        assert_eq!(branches[0].name, "main");
+        assert!(branches[0].is_current);
+        assert_eq!(branches[0].upstream.as_deref(), Some("origin/main"));
+        assert_eq!(branches[0].last_commit, "2 hours ago");
+        assert_eq!(branches[1].name, "feat/panel");
+        assert!(!branches[1].is_current);
+        assert_eq!(branches[1].upstream, None);
+        assert!(parse_branches("").is_empty());
     }
 
     #[test]
@@ -593,6 +923,7 @@ mod tests {
         assert_eq!(ChangeKind::Deleted.letter(), "D");
         assert_eq!(ChangeKind::Renamed.letter(), "R");
         assert_eq!(ChangeKind::Untracked.letter(), "U");
+        assert_eq!(ChangeKind::Conflicted.letter(), "!");
     }
 
     #[test]

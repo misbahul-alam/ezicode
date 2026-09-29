@@ -17,7 +17,7 @@ use crate::fs_tree::{
     collapse_all, display_name, flatten_visible, is_same_or_descendant, load_dir, merge_loaded_dir,
     path_after_move, valid_entry_name, TreeNode, VisibleTreeRow,
 };
-use crate::git::{self, GitChange, RepoStatus};
+use crate::git::{self, ChangeKind, GitChange, RepoStatus};
 use crate::lang;
 use crate::lsp::{LspEvent, LspManager};
 use crate::theme;
@@ -66,6 +66,34 @@ pub(crate) struct DiffTab {
     pub parsed: Option<Arc<crate::ui::diff::ParsedDiff>>,
 
     pub error: Option<String>,
+}
+
+/// Collapsible sections of the Source Control panel.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum GitSection {
+    Repo,
+    Conflicts,
+    Staged,
+    Changes,
+    Untracked,
+}
+
+/// What a pending git confirmation dialog will do when accepted.
+#[derive(Clone, Debug)]
+pub(crate) enum GitConfirmAction {
+    DiscardPath(PathBuf),
+    DiscardAll,
+}
+
+/// A modal "are you sure?" prompt for destructive git actions, mirroring
+/// Zed's confirmation before a restore/trash. Rendered as an overlay by
+/// `render.rs`; Escape or Cancel clears it without acting.
+#[derive(Clone, Debug)]
+pub(crate) struct GitConfirm {
+    pub(crate) title: String,
+    pub(crate) detail: String,
+    pub(crate) confirm_label: String,
+    pub(crate) action: GitConfirmAction,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -148,8 +176,10 @@ pub(crate) struct Workspace {
     pub(crate) selected_path: Option<PathBuf>,
     pub(crate) explorer_section_expanded: bool,
     pub(crate) git_repo_section_expanded: bool,
+    pub(crate) git_conflicts_expanded: bool,
     pub(crate) git_staged_expanded: bool,
     pub(crate) git_changes_expanded: bool,
+    pub(crate) git_untracked_expanded: bool,
     pub(crate) split_diff: bool,
     pub(crate) inline_creating: Option<InlineCreating>,
     pub(crate) inline_renaming: Option<InlineRenaming>,
@@ -225,6 +255,25 @@ pub(crate) struct Workspace {
     pub(crate) git: Option<RepoStatus>,
 
     pub(crate) git_poke_tx: Option<std::sync::mpsc::Sender<()>>,
+
+    /// Bumped every time a new git watcher is started. Status snapshots
+    /// carry the generation they were produced under, and stale ones (from a
+    /// previous project's watcher still winding down) are dropped instead of
+    /// overwriting the current repo's state.
+    pub(crate) git_watch_generation: u64,
+
+    /// Lookup table derived from `git` on every status update: change kind
+    /// per absolute path, plus a Modified marker for every ancestor
+    /// directory. Shared as an `Arc` so the virtualized explorer list can
+    /// clone it per frame for pennies.
+    pub(crate) git_path_kinds: Arc<HashMap<PathBuf, ChangeKind>>,
+
+    /// Label of the remote git operation in flight (fetch/pull/push/…).
+    /// Doubles as a lock so two remote operations can't interleave.
+    pub(crate) git_op_running: Option<&'static str>,
+
+    /// Pending destructive-action confirmation (discard file / discard all).
+    pub(crate) git_confirm: Option<GitConfirm>,
 
     pub(crate) git_commit_input: Option<Entity<InputState>>,
 
@@ -509,8 +558,10 @@ impl Workspace {
             selected_path: None,
             explorer_section_expanded: true,
             git_repo_section_expanded: true,
+            git_conflicts_expanded: true,
             git_staged_expanded: true,
             git_changes_expanded: true,
+            git_untracked_expanded: true,
             split_diff: true,
             inline_creating: None,
             inline_renaming: None,
@@ -548,6 +599,10 @@ impl Workspace {
             panel_resize: None,
             git: None,
             git_poke_tx: None,
+            git_watch_generation: 0,
+            git_path_kinds: Arc::new(HashMap::new()),
+            git_op_running: None,
+            git_confirm: None,
             git_commit_input: None,
             git_commit_pending: false,
             picker: None,
@@ -848,22 +903,38 @@ impl Workspace {
         self.pending_search_jump = None;
         self.clear_search_results();
 
-        // Stop the git poll thread by dropping its poke sender — the thread
-        // exits within ~1.5 s when `recv_timeout` reports `Disconnected`.
+        // Leaving the project invalidates every piece of repo state, not just
+        // the poll thread: without this a project switch could briefly show
+        // (or keep showing) the previous repo's changes.
+        self.stop_git_watcher();
+    }
+
+    /// Stop the git poll thread and clear all repo-derived state. The thread
+    /// exits within ~1.5 s once its poke sender is dropped; the generation
+    /// bump makes any snapshot it still manages to deliver a no-op.
+    pub(crate) fn stop_git_watcher(&mut self) {
         self.git_poke_tx = None;
+        self.git_watch_generation = self.git_watch_generation.wrapping_add(1);
+        self.git = None;
+        self.git_path_kinds = Arc::new(HashMap::new());
+        self.git_confirm = None;
     }
 
     pub(crate) fn start_git_watcher(&mut self, root: &Path, cx: &mut Context<Self>) {
+        // Invalidate whatever watcher may still be running (re-opening the
+        // same folder, or a folder that is not a repository) before starting
+        // a new one, so stale snapshots can never race the fresh ones.
+        self.stop_git_watcher();
         let Some(repo_root) = git::find_repo_root(root) else {
-            self.git = None;
+            cx.notify();
             return;
         };
+        let generation = self.git_watch_generation;
         let (poke_tx, poke_rx) = std::sync::mpsc::channel::<()>();
         let (status_tx, status_rx) = async_channel::unbounded::<RepoStatus>();
 
         if let Some(status) = git::status(&repo_root) {
-            self.git = Some(status.clone());
-            let _ = status_tx.try_send(status);
+            self.apply_git_status(status, cx);
         }
 
         std::thread::spawn(move || {
@@ -891,16 +962,61 @@ impl Workspace {
             let rx = status_rx.clone();
             async move |this, cx| {
                 while let Ok(status) = rx.recv().await {
-                    let _ = this.update(cx, |workspace, cx| {
-                        workspace.git = Some(status);
-
-                        workspace.refresh_active_diff(cx);
-                        cx.notify();
-                    });
+                    let done = this
+                        .update(cx, |workspace, cx| {
+                            // A snapshot from a superseded watcher must not
+                            // clobber the current repository's state.
+                            if workspace.git_watch_generation != generation {
+                                return true;
+                            }
+                            workspace.apply_git_status(status, cx);
+                            false
+                        })
+                        .unwrap_or(true);
+                    if done {
+                        break;
+                    }
                 }
             }
         })
         .detach();
+    }
+
+    /// Install a fresh status snapshot and refresh everything derived from
+    /// it: the path→kind lookup used by the explorer, and any open diff tabs.
+    fn apply_git_status(&mut self, status: RepoStatus, cx: &mut Context<Self>) {
+        let mut kinds: HashMap<PathBuf, ChangeKind> = HashMap::new();
+        for change in &status.changes {
+            let kind = if change.is_conflicted() {
+                ChangeKind::Conflicted
+            } else if change.is_untracked() {
+                ChangeKind::Untracked
+            } else if let Some(worktree) = change.worktree {
+                worktree
+            } else if let Some(index) = change.index {
+                index
+            } else {
+                continue;
+            };
+            kinds.insert(change.path.clone(), kind);
+            // Tint ancestor directories like VS Code/Zed do; conflicts win
+            // over the generic Modified marker so red propagates upward.
+            let mut dir = change.path.parent();
+            while let Some(d) = dir {
+                if !d.starts_with(&status.root) || d == status.root {
+                    break;
+                }
+                let entry = kinds.entry(d.to_path_buf()).or_insert(ChangeKind::Modified);
+                if kind == ChangeKind::Conflicted {
+                    *entry = ChangeKind::Conflicted;
+                }
+                dir = d.parent();
+            }
+        }
+        self.git_path_kinds = Arc::new(kinds);
+        self.git = Some(status);
+        self.refresh_diff_tabs(cx);
+        cx.notify();
     }
 
     pub(crate) fn git_poke(&self) {
@@ -2878,12 +2994,16 @@ impl Workspace {
         };
         self.status = "Refreshing source control…".into();
         cx.notify();
+        let generation = self.git_watch_generation;
         cx.spawn(async move |this, cx| {
             let status = cx.background_spawn(async move { git::status(&root) }).await;
             let _ = this.update(cx, |workspace, cx| {
+                if workspace.git_watch_generation != generation {
+                    return;
+                }
                 match status {
                     Some(status) => {
-                        workspace.git = Some(status);
+                        workspace.apply_git_status(status, cx);
                         workspace.status = "Source control refreshed".into();
                     }
                     None => workspace.status = "git status failed".into(),
@@ -2924,7 +3044,82 @@ impl Workspace {
         );
     }
 
-    pub(crate) fn git_discard_path(&mut self, path: &Path, cx: &mut Context<Self>) {
+    /// Ask before discarding: Zed and VS Code both confirm this, because a
+    /// discard is the one git-panel action that destroys work irreversibly.
+    pub(crate) fn git_request_discard_path(&mut self, path: &Path, cx: &mut Context<Self>) {
+        let Some((_, change)) = self.git_change_for(path) else {
+            self.status = "Not a changed file".into();
+            cx.notify();
+            return;
+        };
+        let name = display_name(path);
+        let (title, detail, label) = if change.is_untracked() {
+            (
+                format!("Delete untracked file \"{name}\"?"),
+                "The file is not tracked by git; discarding it deletes it from disk. \
+                 This cannot be undone."
+                    .to_string(),
+                "Delete File".to_string(),
+            )
+        } else {
+            (
+                format!("Discard changes in \"{name}\"?"),
+                "The file will be restored to its last committed state. \
+                 Unsaved and uncommitted edits are lost permanently."
+                    .to_string(),
+                "Discard Changes".to_string(),
+            )
+        };
+        self.git_confirm = Some(GitConfirm {
+            title,
+            detail,
+            confirm_label: label,
+            action: GitConfirmAction::DiscardPath(path.to_path_buf()),
+        });
+        cx.notify();
+    }
+
+    pub(crate) fn git_request_discard_all(&mut self, cx: &mut Context<Self>) {
+        let Some(repo) = self.git.as_ref() else {
+            self.status = "Not a git repository".into();
+            cx.notify();
+            return;
+        };
+        let count = repo.change_count();
+        if count == 0 {
+            self.status = "No changes to discard".into();
+            cx.notify();
+            return;
+        }
+        self.git_confirm = Some(GitConfirm {
+            title: format!("Discard all changes in {count} file(s)?"),
+            detail: "Tracked files are restored to their last committed state and \
+                     untracked files are deleted from disk. This cannot be undone."
+                .to_string(),
+            confirm_label: "Discard All".to_string(),
+            action: GitConfirmAction::DiscardAll,
+        });
+        cx.notify();
+    }
+
+    pub(crate) fn git_confirm_accept(&mut self, cx: &mut Context<Self>) {
+        let Some(confirm) = self.git_confirm.take() else {
+            return;
+        };
+        match confirm.action {
+            GitConfirmAction::DiscardPath(path) => self.git_discard_path(&path, cx),
+            GitConfirmAction::DiscardAll => self.git_discard_all(cx),
+        }
+    }
+
+    pub(crate) fn git_confirm_cancel(&mut self, cx: &mut Context<Self>) {
+        if self.git_confirm.take().is_some() {
+            self.status = "Discard cancelled".into();
+            cx.notify();
+        }
+    }
+
+    fn git_discard_path(&mut self, path: &Path, cx: &mut Context<Self>) {
         let Some((root, change)) = self.git_change_for(path) else {
             self.status = "Not a changed file".into();
             cx.notify();
@@ -2992,7 +3187,7 @@ impl Workspace {
         );
     }
 
-    pub(crate) fn git_discard_all(&mut self, cx: &mut Context<Self>) {
+    fn git_discard_all(&mut self, cx: &mut Context<Self>) {
         let Some(root) = self.git.as_ref().map(|g| g.root.clone()) else {
             self.status = "Not a git repository".into();
             cx.notify();
@@ -3004,7 +3199,11 @@ impl Workspace {
             .map(|g| {
                 g.changes
                     .iter()
-                    .filter(|c| !c.is_staged() || c.worktree.is_some() || c.is_untracked())
+                    // Discardable work: tracked files with worktree edits
+                    // (including conflicted ones) plus untracked files.
+                    // Staged-only entries are left alone — `git restore`
+                    // without `--staged` wouldn't touch them anyway.
+                    .filter(|c| c.is_untracked() || c.worktree.is_some())
                     .partition::<Vec<_>, _>(|c| !c.is_untracked())
             })
             .unwrap_or_default();
@@ -3057,18 +3256,15 @@ impl Workspace {
         .detach();
     }
 
-    pub(crate) fn toggle_git_repo_section(&mut self, cx: &mut Context<Self>) {
-        self.git_repo_section_expanded = !self.git_repo_section_expanded;
-        cx.notify();
-    }
-
-    pub(crate) fn toggle_git_staged_section(&mut self, cx: &mut Context<Self>) {
-        self.git_staged_expanded = !self.git_staged_expanded;
-        cx.notify();
-    }
-
-    pub(crate) fn toggle_git_changes_section(&mut self, cx: &mut Context<Self>) {
-        self.git_changes_expanded = !self.git_changes_expanded;
+    pub(crate) fn toggle_git_section(&mut self, section: GitSection, cx: &mut Context<Self>) {
+        let flag = match section {
+            GitSection::Repo => &mut self.git_repo_section_expanded,
+            GitSection::Conflicts => &mut self.git_conflicts_expanded,
+            GitSection::Staged => &mut self.git_staged_expanded,
+            GitSection::Changes => &mut self.git_changes_expanded,
+            GitSection::Untracked => &mut self.git_untracked_expanded,
+        };
+        *flag = !*flag;
         cx.notify();
     }
 
@@ -3082,15 +3278,15 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<InputState> {
+        if let Some(input) = &self.git_commit_input {
+            return input.clone();
+        }
         let branch = self
             .git
             .as_ref()
             .and_then(|g| g.branch.as_deref())
             .unwrap_or("main");
-        let placeholder_text = format!("Message (Ctrl+Enter to commit on \"{branch}\"...)");
-        if let Some(input) = &self.git_commit_input {
-            return input.clone();
-        }
+        let placeholder_text = format!("Message (Enter to commit on \"{branch}\")");
         let input = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder_text));
 
         cx.subscribe(&input, |this, _state, event: &InputEvent, cx| {
@@ -3104,45 +3300,91 @@ impl Workspace {
         input
     }
 
+    /// Commit the staged changes. Zed-style fallback: when nothing is staged
+    /// but tracked files are dirty, the commit covers all tracked changes.
     pub(crate) fn git_commit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(root) = self.git.as_ref().map(|g| g.root.clone()) else {
-            self.status = "Not a git repository — open a folder to commit".into();
-            cx.notify();
-            return;
+        let (staged, tracked_dirty) = self
+            .git
+            .as_ref()
+            .map(|g| (g.staged_count(), g.tracked_dirty_count()))
+            .unwrap_or((0, 0));
+        let commit_all = staged == 0 && tracked_dirty > 0;
+        self.git_commit_impl(false, commit_all, window, cx);
+    }
+
+    pub(crate) fn git_commit_all(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.git_commit_impl(false, true, window, cx);
+    }
+
+    pub(crate) fn git_commit_amend(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.git_commit_impl(true, false, window, cx);
+    }
+
+    fn git_commit_impl(
+        &mut self,
+        amend: bool,
+        all: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let (root, conflicts, staged, tracked_dirty, change_count) = match self.git.as_ref() {
+            Some(repo) => (
+                repo.root.clone(),
+                repo.conflict_count(),
+                repo.staged_count(),
+                repo.tracked_dirty_count(),
+                repo.change_count(),
+            ),
+            None => {
+                self.status = "Not a git repository — open a folder to commit".into();
+                cx.notify();
+                return;
+            }
         };
-        let staged_count = self.git.as_ref().map(|g| g.staged_count()).unwrap_or(0);
-        if staged_count == 0 {
-            let changed = self.git.as_ref().map(|g| g.change_count()).unwrap_or(0);
-            self.status = if changed > 0 {
-                "Nothing staged — use + on a file or 'stage all' first".into()
-            } else {
-                "Nothing to commit".into()
-            };
+        if conflicts > 0 {
+            self.status = "Resolve merge conflicts before committing".into();
             cx.notify();
             return;
+        }
+        if !amend {
+            let scope_count = if all { tracked_dirty.max(staged) } else { staged };
+            if scope_count == 0 {
+                self.status = if change_count > 0 {
+                    "Nothing staged — use + on a file or 'stage all' first".into()
+                } else {
+                    "Nothing to commit".into()
+                };
+                cx.notify();
+                return;
+            }
         }
         let message = self
             .git_commit_input
             .as_ref()
             .map(|i| i.read(cx).value().trim().to_string())
             .unwrap_or_default();
-        if message.is_empty() {
+        // An amend keeps the old message when the box is empty (`--no-edit`);
+        // a normal commit needs one.
+        if message.is_empty() && !amend {
             self.status = "Commit message is empty".into();
             cx.notify();
             return;
         }
 
-        self.status = "Committing…".into();
+        self.status = if amend {
+            "Amending last commit…".into()
+        } else {
+            "Committing…".into()
+        };
         cx.notify();
-        let root = root.clone();
-        let message = message.clone();
         let commit_input = self.git_commit_input.clone();
         cx.spawn_in(window, async move |this, cx| {
             let result = cx
-                .background_spawn(async move { git::commit(&root, &message) })
+                .background_spawn(async move { git::commit(&root, &message, amend, all) })
                 .await;
             let is_ok = result.is_ok();
             let status = match result {
+                Ok(summary) if amend => format!("Amended: {summary}"),
                 Ok(summary) => format!("Committed: {summary}"),
                 Err(e) => format!("Commit failed: {e}"),
             };
@@ -3165,13 +3407,158 @@ impl Workspace {
         .detach();
     }
 
+    // -- Remote operations (fetch / pull / push), stash, branches ------------
+
+    /// Run one long git operation on a background thread with progress in
+    /// the status bar. `git_op_running` doubles as a lock: a second remote
+    /// operation is refused instead of silently interleaving with the first.
+    fn git_remote_op(
+        &mut self,
+        verb: &'static str,
+        op: impl FnOnce(PathBuf) -> Result<String, String> + Send + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(root) = self.git.as_ref().map(|g| g.root.clone()) else {
+            self.status = "Not a git repository".into();
+            cx.notify();
+            return;
+        };
+        if let Some(running) = self.git_op_running {
+            self.status = format!("Git is busy ({running} in progress)");
+            cx.notify();
+            return;
+        }
+        self.git_op_running = Some(verb);
+        self.status = format!("{verb}…");
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_spawn(async move { op(root) }).await;
+            let _ = this.update(cx, |workspace, cx| {
+                workspace.git_op_running = None;
+                match result {
+                    Ok(msg) => {
+                        let first_line = msg.lines().next().unwrap_or("").trim();
+                        workspace.status = if first_line.is_empty() {
+                            format!("{verb} done")
+                        } else {
+                            format!("{verb}: {first_line}")
+                        };
+                        workspace.git_poke();
+                    }
+                    Err(e) => {
+                        let first_line = e.lines().next().unwrap_or("git error").trim();
+                        workspace.status = format!("{verb} failed: {first_line}");
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    pub(crate) fn git_fetch(&mut self, cx: &mut Context<Self>) {
+        self.git_remote_op("Fetch", |root| git::fetch(&root), cx);
+    }
+
+    pub(crate) fn git_pull(&mut self, cx: &mut Context<Self>) {
+        self.git_remote_op("Pull", |root| git::pull(&root), cx);
+    }
+
+    pub(crate) fn git_push(&mut self, force: bool, cx: &mut Context<Self>) {
+        let branch = self.git.as_ref().and_then(|g| g.branch.clone());
+        let has_upstream = self
+            .git
+            .as_ref()
+            .map(|g| g.upstream.is_some())
+            .unwrap_or(false);
+        let verb = if force { "Force push" } else { "Push" };
+        self.git_remote_op(
+            verb,
+            move |root| git::push(&root, branch.as_deref(), has_upstream, force),
+            cx,
+        );
+    }
+
+    pub(crate) fn git_stash_push(&mut self, cx: &mut Context<Self>) {
+        self.git_remote_op("Stash", |root| git::stash_push(&root), cx);
+    }
+
+    pub(crate) fn git_stash_pop(&mut self, cx: &mut Context<Self>) {
+        self.git_remote_op("Pop stash", |root| git::stash_pop(&root), cx);
+    }
+
+    pub(crate) fn git_checkout_branch(&mut self, name: String, cx: &mut Context<Self>) {
+        self.git_remote_op("Checkout", move |root| git::checkout(&root, &name), cx);
+    }
+
+    pub(crate) fn git_create_branch(&mut self, name: String, cx: &mut Context<Self>) {
+        // Branch names cannot contain spaces; normalize the picker query the
+        // way `git switch -c` users usually expect.
+        let name = name.trim().replace(' ', "-");
+        if name.is_empty() {
+            return;
+        }
+        self.git_remote_op(
+            "Create branch",
+            move |root| git::create_branch(&root, &name),
+            cx,
+        );
+    }
+
+    pub(crate) fn git_delete_branch(&mut self, name: String, cx: &mut Context<Self>) {
+        self.git_remote_op(
+            "Delete branch",
+            move |root| git::delete_branch(&root, &name),
+            cx,
+        );
+    }
+
+    /// `git init` for the "no repository" empty state, then start watching.
+    pub(crate) fn git_init(&mut self, cx: &mut Context<Self>) {
+        let Some(root) = self.root.clone() else {
+            self.status = "Open a folder before initializing a repository".into();
+            cx.notify();
+            return;
+        };
+        if self.git.is_some() {
+            self.status = "Already a git repository".into();
+            cx.notify();
+            return;
+        }
+        self.status = "Initializing repository…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let init_root = root.clone();
+            let result = cx
+                .background_spawn(async move { git::init(&init_root) })
+                .await;
+            let _ = this.update(cx, |workspace, cx| {
+                match result {
+                    Ok(_) => {
+                        workspace.status = "Initialized empty git repository".into();
+                        workspace.start_git_watcher(&root, cx);
+                    }
+                    Err(e) => {
+                        workspace.status = format!("git init failed: {e}");
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     pub(crate) fn open_diff(&mut self, path: &Path, cx: &mut Context<Self>) {
         let Some((root, change)) = self.git_change_for(path) else {
             self.status = "Not a changed file".into();
             cx.notify();
             return;
         };
-        let staged = change.is_staged();
+        // Staged-only entries diff the index; anything with worktree edits
+        // (or an untracked file) diffs the working tree — previously a file
+        // that was both staged *and* re-edited showed only its staged half.
+        let staged =
+            change.is_staged() && change.worktree.is_none() && !change.is_untracked();
 
         if let Some(idx) = self.tabs.iter().position(|t| {
             t.diff
@@ -3210,35 +3597,70 @@ impl Workspace {
             format!("Diff: {}", display_name(path))
         };
 
-        let tab_path = path.to_path_buf();
+        self.load_diff_tab(root, rel, path.to_path_buf(), staged, cx);
+    }
+
+    /// (Re)load one diff tab's contents in the background. The tab is found
+    /// again by `(path, staged)` when the result lands — matching on the
+    /// path alone used to update the *wrong* tab whenever both the staged
+    /// and unstaged diff of the same file were open.
+    fn load_diff_tab(
+        &mut self,
+        root: PathBuf,
+        rel: String,
+        tab_path: PathBuf,
+        staged: bool,
+        cx: &mut Context<Self>,
+    ) {
         cx.spawn(async move |this, cx| {
             let tab_path_bg = tab_path.clone();
-            let (text, parsed) = cx
+            let rel_bg = rel.clone();
+            let (text, parsed, error) = cx
                 .background_spawn(async move {
-                    let raw = git::diff(&root, &rel, staged).unwrap_or_default();
-                    let text = if !raw.trim().is_empty() {
-                        Some(raw)
-                    } else {
-                        std::fs::read_to_string(&tab_path_bg)
-                            .ok()
-                            .map(|content| git::new_file_diff(&rel, &content))
-                    };
-                    let parsed = text
-                        .as_deref()
-                        .map(|t| Arc::new(crate::ui::diff::parse_diff(t)));
-                    (text, parsed)
+                    let raw = git::diff(&root, &rel_bg, staged);
+                    match raw {
+                        None => (None, None, Some("git diff failed to run".to_string())),
+                        Some(raw) if !raw.trim().is_empty() => {
+                            let parsed = Arc::new(crate::ui::diff::parse_diff(&raw));
+                            (Some(raw), Some(parsed), None)
+                        }
+                        Some(_) => {
+                            // No diff output: brand-new/untracked file (or a
+                            // binary file, which produces no text hunks).
+                            match std::fs::read_to_string(&tab_path_bg) {
+                                Ok(content) => {
+                                    let text = git::new_file_diff(&rel_bg, &content);
+                                    let parsed = Arc::new(crate::ui::diff::parse_diff(&text));
+                                    (Some(text), Some(parsed), None)
+                                }
+                                Err(_) if !tab_path_bg.exists() => (
+                                    Some(String::new()),
+                                    None,
+                                    Some("File was deleted — nothing left to diff".to_string()),
+                                ),
+                                Err(_) => (
+                                    Some(String::new()),
+                                    None,
+                                    Some(
+                                        "No text changes (binary or unreadable file)".to_string(),
+                                    ),
+                                ),
+                            }
+                        }
+                    }
                 })
                 .await;
             let _ = this.update(cx, |workspace, cx| {
-                if let Some(tab) = workspace
-                    .tabs
-                    .iter_mut()
-                    .find(|t| t.diff.as_ref().map(|d| d.path == tab_path) == Some(true))
-                {
+                if let Some(tab) = workspace.tabs.iter_mut().find(|t| {
+                    t.diff
+                        .as_ref()
+                        .map(|d| d.path == tab_path && d.staged == staged)
+                        == Some(true)
+                }) {
                     if let Some(diff) = &mut tab.diff {
                         diff.text = text;
                         diff.parsed = parsed;
-                        diff.error = None;
+                        diff.error = error;
                     }
                     cx.notify();
                 }
@@ -3247,52 +3669,21 @@ impl Workspace {
         .detach();
     }
 
-    fn refresh_active_diff(&mut self, cx: &mut Context<Self>) {
-        let Some(tab) = self.tabs.get(self.active_tab) else {
-            return;
-        };
-        let Some(diff) = tab.diff.as_ref() else {
-            return;
-        };
+    /// Refresh every open diff tab (not just the active one) so a stage /
+    /// unstage / external edit updates all of them at once.
+    fn refresh_diff_tabs(&mut self, cx: &mut Context<Self>) {
         let Some(root) = self.git.as_ref().map(|g| g.root.clone()) else {
             return;
         };
-        let rel = diff.rel.clone();
-        let staged = diff.staged;
-        let tab_path = diff.path.clone();
-        cx.spawn(async move |this, cx| {
-            let tab_path_bg = tab_path.clone();
-            let (text, parsed) = cx
-                .background_spawn(async move {
-                    let raw = git::diff(&root, &rel, staged).unwrap_or_default();
-                    let text = if !raw.trim().is_empty() {
-                        Some(raw)
-                    } else {
-                        std::fs::read_to_string(&tab_path_bg)
-                            .ok()
-                            .map(|content| git::new_file_diff(&rel, &content))
-                    };
-                    let parsed = text
-                        .as_deref()
-                        .map(|t| Arc::new(crate::ui::diff::parse_diff(t)));
-                    (text, parsed)
-                })
-                .await;
-            let _ = this.update(cx, |workspace, cx| {
-                if let Some(tab) = workspace
-                    .tabs
-                    .iter_mut()
-                    .find(|t| t.diff.as_ref().map(|d| d.path == tab_path) == Some(true))
-                {
-                    if let Some(diff) = &mut tab.diff {
-                        diff.text = text;
-                        diff.parsed = parsed;
-                    }
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
+        let jobs: Vec<(String, PathBuf, bool)> = self
+            .tabs
+            .iter()
+            .filter_map(|t| t.diff.as_ref())
+            .map(|d| (d.rel.clone(), d.path.clone(), d.staged))
+            .collect();
+        for (rel, path, staged) in jobs {
+            self.load_diff_tab(root.clone(), rel, path, staged, cx);
+        }
     }
 
     pub(crate) fn format_document(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -3853,6 +4244,116 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Zed-style branch switcher: local branches sorted by recency, checkout
+    /// on Enter, and "type a new name + Enter with no match" creates it.
+    pub(crate) fn toggle_branch_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(p) = &self.picker {
+            if p.kind == crate::ui::picker::PickerKind::GitBranch {
+                self.close_modal(window, cx);
+                return;
+            }
+        }
+        let Some(root) = self.git.as_ref().map(|g| g.root.clone()) else {
+            self.status = "Not a git repository".into();
+            cx.notify();
+            return;
+        };
+        cx.spawn_in(window, async move |this, cx| {
+            let branches = cx.background_spawn(async move { git::branches(&root) }).await;
+            let _ = this.update_in(cx, |workspace, window, cx| {
+                workspace.open_branch_picker(branches, false, window, cx);
+            });
+        })
+        .detach();
+    }
+
+    /// Same list, but Enter deletes the selected branch (`git branch -d`).
+    pub(crate) fn toggle_branch_delete_picker(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(p) = &self.picker {
+            if p.kind == crate::ui::picker::PickerKind::GitBranchDelete {
+                self.close_modal(window, cx);
+                return;
+            }
+        }
+        let Some(root) = self.git.as_ref().map(|g| g.root.clone()) else {
+            self.status = "Not a git repository".into();
+            cx.notify();
+            return;
+        };
+        cx.spawn_in(window, async move |this, cx| {
+            let branches = cx.background_spawn(async move { git::branches(&root) }).await;
+            let _ = this.update_in(cx, |workspace, window, cx| {
+                workspace.open_branch_picker(branches, true, window, cx);
+            });
+        })
+        .detach();
+    }
+
+    fn open_branch_picker(
+        &mut self,
+        branches: Vec<git::Branch>,
+        delete_mode: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let items: Vec<crate::ui::picker::PickerItem> = branches
+            .iter()
+            // The current branch can be neither checked out again nor
+            // deleted, but seeing it in checkout mode is useful context.
+            .filter(|b| !(delete_mode && b.is_current))
+            .map(|b| crate::ui::picker::PickerItem {
+                id: b.name.clone(),
+                title: b.name.clone(),
+                subtitle: Some(if b.is_current {
+                    format!("current • {}", b.last_commit)
+                } else if let Some(upstream) = &b.upstream {
+                    format!("{} • {}", upstream, b.last_commit)
+                } else {
+                    b.last_commit.clone()
+                }),
+                icon: Some("ui_icons/git_branch.svg".into()),
+                shortcut: None,
+                is_recent: b.is_current,
+                score: 0,
+            })
+            .collect();
+
+        let placeholder = if delete_mode {
+            "Select a branch to delete…"
+        } else {
+            "Checkout branch, or type a new name and press Enter to create it…"
+        };
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
+
+        cx.subscribe(&input, |this, _state, event: &InputEvent, cx| match event {
+            InputEvent::Change => {
+                this.on_picker_input_changed(cx);
+            }
+            InputEvent::PressEnter { .. } => {
+                this.picker_confirm_pending = true;
+                cx.notify();
+            }
+            _ => {}
+        })
+        .detach();
+
+        input.update(cx, |this, cx| {
+            this.focus(window, cx);
+        });
+
+        let kind = if delete_mode {
+            crate::ui::picker::PickerKind::GitBranchDelete
+        } else {
+            crate::ui::picker::PickerKind::GitBranch
+        };
+        self.picker = Some(crate::ui::picker::PickerState::new(kind, input, items));
+        cx.notify();
+    }
+
     pub(crate) fn set_active_tab_language(
         &mut self,
         lang_id: &str,
@@ -3896,6 +4397,13 @@ impl Workspace {
     }
 
     pub(crate) fn close_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // A pending git confirmation is the topmost modal; Escape cancels it
+        // before it would close a picker underneath.
+        if self.git_confirm.take().is_some() {
+            self.focus_active_editor_or_self(window, cx);
+            cx.notify();
+            return;
+        }
         if self.picker.take().is_some() {
             self.focus_active_editor_or_self(window, cx);
             cx.notify();
@@ -3964,6 +4472,34 @@ impl Workspace {
                 if let Some(item) = picker.selected_item() {
                     let lang_id = item.id.clone();
                     self.set_active_tab_language(&lang_id, window, cx);
+                }
+            }
+            crate::ui::picker::PickerKind::GitBranch => {
+                let query = picker.input.read(cx).value().trim().to_string();
+                match picker.selected_item() {
+                    Some(item) => {
+                        let name = item.id.clone();
+                        let is_current = self
+                            .git
+                            .as_ref()
+                            .and_then(|g| g.branch.as_deref())
+                            .map(|b| b == name)
+                            .unwrap_or(false);
+                        if is_current {
+                            self.status = format!("Already on {name}");
+                            cx.notify();
+                        } else {
+                            self.git_checkout_branch(name, cx);
+                        }
+                    }
+                    None if !query.is_empty() => self.git_create_branch(query, cx),
+                    None => {}
+                }
+            }
+            crate::ui::picker::PickerKind::GitBranchDelete => {
+                if let Some(item) = picker.selected_item() {
+                    let name = item.id.clone();
+                    self.git_delete_branch(name, cx);
                 }
             }
         }
@@ -4035,8 +4571,19 @@ impl Workspace {
             "git.refresh" => self.git_refresh(cx),
             "git.stage_all" => self.git_stage_all(cx),
             "git.unstage_all" => self.git_unstage_all(cx),
-            "git.discard_all" => self.git_discard_all(cx),
+            "git.discard_all" => self.git_request_discard_all(cx),
             "git.commit" => self.git_commit(window, cx),
+            "git.commit_all" => self.git_commit_all(window, cx),
+            "git.commit_amend" => self.git_commit_amend(window, cx),
+            "git.fetch" => self.git_fetch(cx),
+            "git.pull" => self.git_pull(cx),
+            "git.push" => self.git_push(false, cx),
+            "git.push_force" => self.git_push(true, cx),
+            "git.stash" => self.git_stash_push(cx),
+            "git.stash_pop" => self.git_stash_pop(cx),
+            "git.branch.checkout" => self.toggle_branch_picker(window, cx),
+            "git.branch.delete" => self.toggle_branch_delete_picker(window, cx),
+            "git.init" => self.git_init(cx),
             "help.about" => self.about(cx),
             "app.quit" => self.quit(cx),
             _ => {}

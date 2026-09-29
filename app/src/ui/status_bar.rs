@@ -29,6 +29,8 @@ pub(crate) fn render_status_bar(
     theme_name: &str,
     git_branch: Option<&str>,
     git_changes: usize,
+    // (ahead, behind) relative to the upstream, when either is non-zero.
+    git_sync: Option<(u32, u32)>,
     cursor_pos: Option<(u32, u32)>,
     diagnostic_counts: Option<(usize, usize)>,
     lang: Option<&str>,
@@ -70,8 +72,13 @@ pub(crate) fn render_status_bar(
                             .rounded(px(3.0))
                             .cursor_pointer()
                             .hover(|s| s.bg(rgba(t.ghost_hover)))
+                            // Zed-style: the status-bar branch opens the
+                            // branch switcher, not just the git panel.
                             .on_click(|_, window, cx| {
-                                window.dispatch_action(Box::new(crate::actions::ShowGit), cx);
+                                window.dispatch_action(
+                                    Box::new(crate::actions::GitBranchPicker),
+                                    cx,
+                                );
                             })
                             .child(
                                 svg()
@@ -81,6 +88,14 @@ pub(crate) fn render_status_bar(
                                     .text_color(rgba(t.text)),
                             )
                             .child(SharedString::from(branch.to_string()))
+                            .when_some(git_sync, |parent, (ahead, behind)| {
+                                parent.child(
+                                    div()
+                                        .text_size(px(10.5))
+                                        .text_color(rgba(t.text_muted))
+                                        .child(SharedString::from(format!("↑{ahead} ↓{behind}"))),
+                                )
+                            })
                             .when(git_changes > 0, |parent| {
                                 parent.child(
                                     div()
