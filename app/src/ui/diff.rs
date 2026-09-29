@@ -75,14 +75,18 @@ pub(crate) fn render_diff_view(
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| diff.rel.clone());
 
+    // Show the parent directory with the *platform* separator. This used to
+    // hard-code backslashes, which rendered paths like `src\ui\` on
+    // macOS/Linux.
     let parent_dir = rel_path.parent().and_then(|p| {
         let s = p.to_string_lossy();
         if s.is_empty() {
             None
         } else {
-            let mut normalized = s.replace('/', "\\");
-            if !normalized.ends_with('\\') {
-                normalized.push('\\');
+            let sep = std::path::MAIN_SEPARATOR;
+            let mut normalized = s.replace(&['/', '\\'][..], &sep.to_string());
+            if !normalized.ends_with(sep) {
+                normalized.push(sep);
             }
             Some(normalized)
         }
