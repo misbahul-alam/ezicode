@@ -26,7 +26,7 @@ import * as path from "node:path";
 import { spawn, execFile } from "node:child_process";
 
 const LAUNCHER_VERSION = "2.0.1"; // npm package version
-const EDITOR_VERSION = "0.1.3"; // keep in sync with app/Cargo.toml (default download)
+const EDITOR_VERSION = "0.1.4"; // keep in sync with app/Cargo.toml (default download)
 const REPO = process.env.EZI_REPO || "olovalabs/ezicode";
 const TAG = `v${process.env.EZI_VERSION || EDITOR_VERSION}`;
 
