@@ -36,16 +36,24 @@ npm publish       # package `ezi`, bin `ezi` -> dist/index.js
 Users then run:
 
 ```bash
-npx -y ezi .      # first run downloads ~30-60MB binary to cache, opens editor
+npx -y ezi@latest .  # first run downloads ~30-60MB binary to cache, opens editor
 ezi .             # after npm i -g ezi
 ```
 
-Keep `VERSION` in `src/index.ts`, `version` in `package.json`, and `version`
-in `app/Cargo.toml` in sync — the launcher builds its download URL as
-`.../releases/download/v<VERSION>/ezicode-<target>.*`.
+Version resolution (no republish needed for editor releases):
+
+1. `EZI_VERSION=0.1.2` pins that release, no network.
+2. Unset (or `EZI_VERSION=latest`, just `npx ezi`) checks
+   `api.github.com/repos/<owner>/<repo>/releases/latest` on every run.
+   Same tag reuses the cached binary (no download); new tag downloads once
+   to `<cache>/vX.Y.Z/`. Offline / API failure reuses the last-seen tag,
+   else the compiled-in default near `app/Cargo.toml`.
+
+Only republish `ezi` for launcher bugfixes. Skip the lookup with
+`EZI_NO_UPDATE_CHECK=1`. Optional `EZI_GITHUB_TOKEN` raises API rate limits.
 
 ## Cache
 
-- Linux/macOS: `~/.cache/ezi/v<version>/` (or `$XDG_CACHE_HOME`)
+- Linux/macOS: `~/.cache/ezi/v<version>/` (or `$XDG_CACHE_HOME`) + `latest.json` tag cache
 - Windows: `%LOCALAPPDATA%/ezi/cache/v<version>/`
-- Override: `EZI_CACHE`, `EZI_VERSION`, `EZI_REPO`
+- Override: `EZI_CACHE`, `EZI_VERSION`, `EZI_REPO`, `EZI_NO_UPDATE_CHECK=1`
