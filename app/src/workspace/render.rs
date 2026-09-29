@@ -373,12 +373,16 @@ impl Render for Workspace {
             .on_action(cx.listener(|this, action: &ExplorerDuplicate, _, cx| {
                 this.explorer_duplicate(&action.path, cx);
             }))
-            .on_action(cx.listener(|this, action: &ExplorerFindInFolder, window, cx| {
-                this.explorer_find_in_folder(&action.path, window, cx);
-            }))
-            .on_action(cx.listener(|this, action: &ExplorerOpenInTerminal, window, cx| {
-                this.explorer_open_in_terminal(&action.path, window, cx);
-            }))
+            .on_action(
+                cx.listener(|this, action: &ExplorerFindInFolder, window, cx| {
+                    this.explorer_find_in_folder(&action.path, window, cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|this, action: &ExplorerOpenInTerminal, window, cx| {
+                    this.explorer_open_in_terminal(&action.path, window, cx);
+                }),
+            )
             .on_action(cx.listener(|this, _: &ExplorerToggleStickyScroll, _, cx| {
                 this.toggle_explorer_sticky_scroll(cx);
             }))

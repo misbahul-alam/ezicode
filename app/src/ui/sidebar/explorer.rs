@@ -421,14 +421,13 @@ fn tree_body(view: ExplorerView<'_>, t: &Colors, cx: &mut Context<Workspace>) ->
         }))
         // Dragging near the top or bottom edge scrolls the list, so an item
         // can be dropped outside the current viewport.
-        .on_drag_move(
-            cx.listener(move |_this, event: &DragMoveEvent<ExplorerDrag>, window, _cx| {
-                if auto_scroll_during_drag(&scroll_for_drag, event.bounds, event.event.position)
-                {
+        .on_drag_move(cx.listener(
+            move |_this, event: &DragMoveEvent<ExplorerDrag>, window, _cx| {
+                if auto_scroll_during_drag(&scroll_for_drag, event.bounds, event.event.position) {
                     window.refresh();
                 }
-            }),
-        )
+            },
+        ))
         .child(list);
 
     container
@@ -700,28 +699,31 @@ fn sticky_row(
         })
         .hover(|s| s.bg(rgba(t.ghost_hover)))
         // Clicking a sticky header jumps to that folder, as in VS Code.
-        .on_click(cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {
-            window.focus(&this.explorer_focus_handle);
-            this.set_explorer_selection(path.clone());
-            if event.modifiers().alt {
-                this.toggle_dir_recursive(&path, cx);
-            } else if let Some(ix) = this
-                .explorer_rows
-                .iter()
-                .position(|candidate| candidate.path == path)
-            {
-                // Scroll just far enough that this folder stops being sticky:
-                // it lands directly under its own pinned ancestors, which is
-                // what Zed's project panel does with a sticky item click.
-                this.explorer_scroll_handle.scroll_to_item_strict_with_offset(
-                    ix,
-                    gpui::ScrollStrategy::Top,
-                    own_ancestors,
-                );
-            }
-            cx.notify();
-            cx.stop_propagation();
-        }))
+        .on_click(
+            cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {
+                window.focus(&this.explorer_focus_handle);
+                this.set_explorer_selection(path.clone());
+                if event.modifiers().alt {
+                    this.toggle_dir_recursive(&path, cx);
+                } else if let Some(ix) = this
+                    .explorer_rows
+                    .iter()
+                    .position(|candidate| candidate.path == path)
+                {
+                    // Scroll just far enough that this folder stops being sticky:
+                    // it lands directly under its own pinned ancestors, which is
+                    // what Zed's project panel does with a sticky item click.
+                    this.explorer_scroll_handle
+                        .scroll_to_item_strict_with_offset(
+                            ix,
+                            gpui::ScrollStrategy::Top,
+                            own_ancestors,
+                        );
+                }
+                cx.notify();
+                cx.stop_propagation();
+            }),
+        )
         .child(
             div()
                 .id(("sticky-chevron", index))
@@ -1136,17 +1138,19 @@ fn tree_row(
     row = row
         .child(content)
         .tooltip(move |window, cx| Tooltip::new(tooltip_text.clone()).build(window, cx))
-        .on_click(cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {
-            this.explorer_row_click(
-                path_click.clone(),
-                is_dir,
-                event.modifiers(),
-                event.click_count(),
-                window,
-                cx,
-            );
-            cx.stop_propagation();
-        }))
+        .on_click(
+            cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {
+                this.explorer_row_click(
+                    path_click.clone(),
+                    is_dir,
+                    event.modifiers(),
+                    event.click_count(),
+                    window,
+                    cx,
+                );
+                cx.stop_propagation();
+            }),
+        )
         .on_drag(
             ExplorerDrag {
                 path: path.clone(),
@@ -1170,8 +1174,8 @@ fn tree_row(
     let drop_color = t.element_selected;
     row = row
         .drag_over::<ExplorerDrag>(move |this, _, _, _| this.bg(rgba(drop_color)))
-        .on_drag_move(
-            cx.listener(move |this, event: &DragMoveEvent<ExplorerDrag>, _window, cx| {
+        .on_drag_move(cx.listener(
+            move |this, event: &DragMoveEvent<ExplorerDrag>, _window, cx| {
                 if event.bounds.contains(&event.event.position) {
                     if let Some(dir) = hover_dir.clone() {
                         this.explorer_drag_over(dir, cx);
@@ -1179,8 +1183,8 @@ fn tree_row(
                 } else if let Some(dir) = leave_dir.as_ref() {
                     this.explorer_drag_leave(dir, cx);
                 }
-            }),
-        )
+            },
+        ))
         .on_drop(cx.listener(move |this, drag: &ExplorerDrag, _window, cx| {
             this.explorer_drop(&drag.path, &drop_path, cx);
             cx.stop_propagation();
