@@ -1,5 +1,6 @@
 mod render;
 mod search;
+mod terminal_tabs;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -145,6 +146,28 @@ pub(crate) struct ExplorerDrag {
     pub(crate) count: usize,
 }
 
+/// Where a dragged terminal tab would land if dropped right now. Drives the
+/// insertion caret in the tab strip.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct TerminalDragTarget {
+    pub(crate) dock: crate::terminal::TerminalDock,
+    /// Insertion index in the target dock's tab list (`0..=len`).
+    pub(crate) insert_ix: usize,
+    /// Which element claimed the target (tab index, or `usize::MAX` for the
+    /// tail drop zone). Prevents adjacent tabs from clearing each other's
+    /// indicator: a tab only clears a target it set itself.
+    pub(crate) owner_ix: usize,
+}
+
+/// The inline editor shown in a terminal tab while it is being renamed.
+/// Keyed by entity, not index, so the rename survives tab reordering.
+#[derive(Clone)]
+pub(crate) struct TerminalRenaming {
+    pub(crate) dock: crate::terminal::TerminalDock,
+    pub(crate) terminal: Entity<crate::terminal::Terminal>,
+    pub(crate) input: Entity<InputState>,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct ExplorerClipboard {
     /// Every entry that was cut or copied — the explorer is multi-select, so
@@ -239,6 +262,10 @@ pub(crate) struct Workspace {
     pub(crate) last_terminal_poll: std::time::Instant,
     /// Monotonic counter for labeling new terminals (PowerShell 1, PowerShell 2, ...).
     pub(crate) next_terminal_id: usize,
+    /// Number of pinned tabs in the bottom dock. Pinned tabs are always a
+    /// prefix of `terminal_tabs`, exactly like `pinned_tab_count` on a Zed
+    /// pane.
+    pub(crate) terminal_pinned_count: usize,
     // ---- Right-dock terminal panel (Zed-style) ----
     // A second, fully independent terminal surface: its own tab list and its
     // own PTY sessions. Nothing here is shared with `terminal_tabs` above —
@@ -254,6 +281,13 @@ pub(crate) struct Workspace {
     pub(crate) terminal_right_tab_scroll: ScrollHandle,
     /// Monotonic counter for right-dock terminals.
     pub(crate) next_terminal_right_id: usize,
+    /// Number of pinned tabs in the right dock (see `terminal_pinned_count`).
+    pub(crate) terminal_right_pinned_count: usize,
+    /// Live drop target while a terminal tab drag is in flight, `None`
+    /// otherwise. Shared by both docks — only one drag can exist at a time.
+    pub(crate) terminal_drag_target: Option<TerminalDragTarget>,
+    /// In-flight inline rename of a terminal tab, if any.
+    pub(crate) terminal_renaming: Option<TerminalRenaming>,
     /// File system change notification sender: the changed path, so reloads
     /// can be scoped to the affected directory instead of rescanning the
     /// whole tree on every event.
@@ -616,12 +650,16 @@ impl Workspace {
             terminal_tab_scroll: ScrollHandle::new(),
             last_terminal_poll: std::time::Instant::now(),
             next_terminal_id: 1,
+            terminal_pinned_count: 0,
             show_terminal_right: false,
             terminal_right_width: TERMINAL_RIGHT_DEFAULT_WIDTH,
             terminal_right_tabs: Vec::new(),
             active_terminal_right: 0,
             terminal_right_tab_scroll: ScrollHandle::new(),
             next_terminal_right_id: 1,
+            terminal_right_pinned_count: 0,
+            terminal_drag_target: None,
+            terminal_renaming: None,
             fs_event_tx,
             _watcher: None,
             tabs: Vec::new(),
@@ -1313,34 +1351,14 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if index >= self.terminal_tabs.len() {
-            return;
-        }
-
-        self.terminal_tabs.remove(index);
-
-        if self.terminal_tabs.is_empty() {
-            self.active_terminal = 0;
-            self.show_terminal = false;
-            self.status = "Terminal closed".into();
-            self.focus_active_editor_or_self(window, cx);
-            cx.notify();
-            return;
-        }
-
-        if self.active_terminal >= self.terminal_tabs.len() {
-            self.active_terminal = self.terminal_tabs.len() - 1;
-        } else if index < self.active_terminal {
-            self.active_terminal -= 1;
-        }
-        self.reveal_active_terminal_tab();
-        self.focus_active_terminal(window, cx);
-        self.status = format!(
-            "Terminal {} closed — {} terminal(s) remain",
-            index + 1,
-            self.terminal_tabs.len()
+        // Shared multi-close core: keeps the pinned prefix, the active tab
+        // and the inline rename consistent. See workspace/terminal_tabs.rs.
+        self.close_terminal_tabs_at(
+            crate::terminal::TerminalDock::Bottom,
+            vec![index],
+            window,
+            cx,
         );
-        cx.notify();
     }
 
     pub(crate) fn next_terminal_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1442,6 +1460,13 @@ impl Workspace {
         let Some((dock, index, _)) = self.focused_or_active_terminal(window, cx) else {
             return;
         };
+        // Zed parity: close shortcuts spare pinned tabs; only the tab's own
+        // context menu (or unpinning first) closes a pinned terminal.
+        if self.terminal_tab_is_pinned(dock, index) {
+            self.status = "Terminal tab is pinned — unpin it to close".into();
+            cx.notify();
+            return;
+        }
         match dock {
             crate::terminal::TerminalDock::Bottom => self.close_terminal(index, window, cx),
             crate::terminal::TerminalDock::Right => self.close_terminal_right(index, window, cx),
@@ -1640,34 +1665,14 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if index >= self.terminal_right_tabs.len() {
-            return;
-        }
-
-        self.terminal_right_tabs.remove(index);
-
-        if self.terminal_right_tabs.is_empty() {
-            self.active_terminal_right = 0;
-            self.show_terminal_right = false;
-            self.status = "Right terminal panel closed".into();
-            self.focus_active_editor_or_self(window, cx);
-            cx.notify();
-            return;
-        }
-
-        if self.active_terminal_right >= self.terminal_right_tabs.len() {
-            self.active_terminal_right = self.terminal_right_tabs.len() - 1;
-        } else if index < self.active_terminal_right {
-            self.active_terminal_right -= 1;
-        }
-        self.reveal_active_terminal_right_tab();
-        self.focus_active_terminal_right(window, cx);
-        self.status = format!(
-            "Right terminal {} closed — {} terminal(s) remain",
-            index + 1,
-            self.terminal_right_tabs.len()
+        // Shared multi-close core: keeps the pinned prefix, the active tab
+        // and the inline rename consistent. See workspace/terminal_tabs.rs.
+        self.close_terminal_tabs_at(
+            crate::terminal::TerminalDock::Right,
+            vec![index],
+            window,
+            cx,
         );
-        cx.notify();
     }
 
     /// Probe each terminal's child process for exit.

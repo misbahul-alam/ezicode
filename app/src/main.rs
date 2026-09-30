@@ -140,6 +140,46 @@ fn main() {
                 Some("Input"),
             )]);
 
+            // Zed-style terminal tab shortcuts, scoped to the terminal panels
+            // (the `TerminalPanel` key context set in terminal::render_terminal_panel)
+            // so the editor keeps its global Ctrl+W behaviour. `primary` is the
+            // platform's primary modifier: Cmd on macOS, Ctrl everywhere else.
+            let primary = if cfg!(target_os = "macos") {
+                "cmd"
+            } else {
+                "ctrl"
+            };
+            const TERMINAL_PANEL: Option<&str> = Some("TerminalPanel");
+            cx.bind_keys([
+                KeyBinding::new(&format!("{primary}-w"), CloseTerminal, TERMINAL_PANEL),
+                KeyBinding::new(
+                    &format!("{primary}-alt-t"),
+                    CloseOtherTerminals,
+                    TERMINAL_PANEL,
+                ),
+                KeyBinding::new(
+                    &format!("{primary}-k e"),
+                    CloseTerminalsLeft,
+                    TERMINAL_PANEL,
+                ),
+                KeyBinding::new(
+                    &format!("{primary}-k k"),
+                    CloseTerminalsRight,
+                    TERMINAL_PANEL,
+                ),
+                KeyBinding::new(
+                    &format!("{primary}-k u"),
+                    CloseCleanTerminals,
+                    TERMINAL_PANEL,
+                ),
+                KeyBinding::new(&format!("{primary}-k w"), CloseAllTerminals, TERMINAL_PANEL),
+                KeyBinding::new(
+                    &format!("{primary}-k shift-enter"),
+                    ToggleTerminalPin,
+                    TERMINAL_PANEL,
+                ),
+            ]);
+
             gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
             let default_theme = &theme::all()[theme::default_index()];
             gpui_component::Theme::global_mut(cx).highlight_theme =
