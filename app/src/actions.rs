@@ -52,6 +52,24 @@ actions!(
         NextTerminal,
         PrevTerminal,
         CloseTerminal,
+        /// Close every terminal tab in the focused dock except the active
+        /// one (pinned tabs survive, matching Zed's `pane::CloseOtherItems`).
+        CloseOtherTerminals,
+        /// Close the terminal tabs positioned before the active one.
+        CloseTerminalsLeft,
+        /// Close the terminal tabs positioned after the active one.
+        CloseTerminalsRight,
+        /// Close terminals whose child process has already exited
+        /// (Zed's `pane::CloseCleanItems` applied to terminals).
+        CloseCleanTerminals,
+        /// Close every terminal tab in the focused dock (pinned tabs survive).
+        CloseAllTerminals,
+        /// Pin or unpin the active terminal tab (Zed's `pane::TogglePinTab`).
+        ToggleTerminalPin,
+        /// Rename the active terminal tab inline.
+        RenameTerminal,
+        /// Toggle the active terminal's read-only state.
+        ToggleTerminalReadOnly,
         ClearTerminal,
         /// Copy the active terminal selection.
         TerminalCopy,

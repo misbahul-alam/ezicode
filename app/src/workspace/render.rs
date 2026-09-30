@@ -169,6 +169,22 @@ impl Render for Workspace {
         let active_terminal_right = self.active_terminal_right;
         let terminal_right_tab_scroll = self.terminal_right_tab_scroll.clone();
         let show_terminal_right = self.show_terminal_right;
+        let terminal_pinned_count = self.terminal_pinned_count;
+        let terminal_right_pinned_count = self.terminal_right_pinned_count;
+        let terminal_drag_target_bottom =
+            self.terminal_drag_target_for(crate::terminal::TerminalDock::Bottom);
+        let terminal_drag_target_right =
+            self.terminal_drag_target_for(crate::terminal::TerminalDock::Right);
+        let terminal_renaming_bottom = self
+            .terminal_renaming
+            .as_ref()
+            .filter(|renaming| renaming.dock == crate::terminal::TerminalDock::Bottom)
+            .map(|renaming| (renaming.terminal.clone(), renaming.input.clone()));
+        let terminal_renaming_right = self
+            .terminal_renaming
+            .as_ref()
+            .filter(|renaming| renaming.dock == crate::terminal::TerminalDock::Right)
+            .map(|renaming| (renaming.terminal.clone(), renaming.input.clone()));
 
         let tabs = &self.tabs;
         let active_tab = self.active_tab;
@@ -308,6 +324,30 @@ impl Render for Workspace {
             }))
             .on_action(cx.listener(|this, _: &CloseTerminal, window, cx| {
                 this.close_focused_terminal(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &CloseOtherTerminals, window, cx| {
+                this.close_other_terminals_focused(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &CloseTerminalsLeft, window, cx| {
+                this.close_terminals_left_focused(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &CloseTerminalsRight, window, cx| {
+                this.close_terminals_right_focused(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &CloseCleanTerminals, window, cx| {
+                this.close_clean_terminals_focused(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &CloseAllTerminals, window, cx| {
+                this.close_all_terminals_focused(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &ToggleTerminalPin, window, cx| {
+                this.toggle_terminal_pin_focused(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &RenameTerminal, window, cx| {
+                this.rename_terminal_focused(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &ToggleTerminalReadOnly, window, cx| {
+                this.toggle_terminal_read_only_focused(window, cx);
             }))
             .on_action(cx.listener(|this, _: &TerminalTab1, window, cx| {
                 this.switch_terminal_tab_to(0, window, cx);
@@ -688,11 +728,17 @@ impl Render for Workspace {
                                             col.child(
                                                 div().flex_1().size_full().overflow_hidden().child(
                                                     crate::terminal::render_terminal_panel(
-                                                        crate::terminal::TerminalDock::Bottom,
-                                                        terminal_tabs,
-                                                        active_terminal,
-                                                        true,
-                                                        &terminal_tab_scroll,
+                                                        crate::terminal::TerminalPanelParams {
+                                                            dock: crate::terminal::TerminalDock::Bottom,
+                                                            tabs: terminal_tabs,
+                                                            active: active_terminal,
+                                                            pinned_count: terminal_pinned_count,
+                                                            maximized: true,
+                                                            tab_scroll: &terminal_tab_scroll,
+                                                            drag_target: terminal_drag_target_bottom,
+                                                            renaming: terminal_renaming_bottom
+                                                                .clone(),
+                                                        },
                                                         &t,
                                                         cx,
                                                     ),
@@ -705,11 +751,17 @@ impl Render for Workspace {
                                                     .flex_shrink_0()
                                                     .overflow_hidden()
                                                     .child(crate::terminal::render_terminal_panel(
-                                                        crate::terminal::TerminalDock::Bottom,
-                                                        terminal_tabs,
-                                                        active_terminal,
-                                                        false,
-                                                        &terminal_tab_scroll,
+                                                        crate::terminal::TerminalPanelParams {
+                                                            dock: crate::terminal::TerminalDock::Bottom,
+                                                            tabs: terminal_tabs,
+                                                            active: active_terminal,
+                                                            pinned_count: terminal_pinned_count,
+                                                            maximized: false,
+                                                            tab_scroll: &terminal_tab_scroll,
+                                                            drag_target: terminal_drag_target_bottom,
+                                                            renaming: terminal_renaming_bottom
+                                                                .clone(),
+                                                        },
                                                         &t,
                                                         cx,
                                                     )),
@@ -737,11 +789,16 @@ impl Render for Workspace {
                                         .border_l_1()
                                         .border_color(rgba(t.border_variant))
                                         .child(crate::terminal::render_terminal_panel(
-                                            crate::terminal::TerminalDock::Right,
-                                            terminal_right_tabs,
-                                            active_terminal_right,
-                                            false,
-                                            &terminal_right_tab_scroll,
+                                            crate::terminal::TerminalPanelParams {
+                                                dock: crate::terminal::TerminalDock::Right,
+                                                tabs: terminal_right_tabs,
+                                                active: active_terminal_right,
+                                                pinned_count: terminal_right_pinned_count,
+                                                maximized: false,
+                                                tab_scroll: &terminal_right_tab_scroll,
+                                                drag_target: terminal_drag_target_right,
+                                                renaming: terminal_renaming_right.clone(),
+                                            },
                                             &t,
                                             cx,
                                         )),
