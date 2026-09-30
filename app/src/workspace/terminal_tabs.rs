@@ -12,7 +12,7 @@
 //! Invariant maintained throughout (borrowed from Zed's `Pane`): pinned tabs
 //! form a prefix of the tab list, tracked by a plain `pinned_count` per dock.
 
-use gpui::{Context, Entity, Window};
+use gpui::{AppContext, Context, Entity, Window};
 use gpui_component::input::{InputEvent, InputState};
 
 use super::{TerminalDragTarget, TerminalRenaming, Workspace};
@@ -135,7 +135,8 @@ impl Workspace {
         match dock {
             TerminalDock::Bottom => {
                 if !self.terminal_tabs.is_empty() {
-                    self.terminal_tab_scroll.scroll_to_item(self.active_terminal);
+                    self.terminal_tab_scroll
+                        .scroll_to_item(self.active_terminal);
                 }
             }
             TerminalDock::Right => {

@@ -172,8 +172,7 @@ impl Terminal {
                     writer: pty_writer.clone(),
                     read_only: read_only.clone(),
                 };
-                let view =
-                    cx.new(|cx| TerminalView::new(shared_writer, dummy_reader, config, cx));
+                let view = cx.new(|cx| TerminalView::new(shared_writer, dummy_reader, config, cx));
                 return Self {
                     view,
                     name,
@@ -223,8 +222,7 @@ impl Terminal {
                     writer: pty_writer.clone(),
                     read_only: read_only.clone(),
                 };
-                let view =
-                    cx.new(|cx| TerminalView::new(shared_writer, dummy_reader, config, cx));
+                let view = cx.new(|cx| TerminalView::new(shared_writer, dummy_reader, config, cx));
                 return Self {
                     view,
                     name,
@@ -902,10 +900,12 @@ fn render_terminal_tab(
             },
         ))
         .drag_over::<TerminalTabDrag>(|style, _, _, _| style.bg(rgba(TAB_INACTIVE_HOVER)))
-        .on_drop(cx.listener(move |this, drag: &TerminalTabDrag, window, cx| {
-            cx.stop_propagation();
-            this.drop_terminal_tab(drag, dock, index, window, cx);
-        }));
+        .on_drop(
+            cx.listener(move |this, drag: &TerminalTabDrag, window, cx| {
+                cx.stop_propagation();
+                this.drop_terminal_tab(drag, dock, index, window, cx);
+            }),
+        );
 
     if is_active {
         tab = tab
@@ -1096,10 +1096,12 @@ fn render_terminal_tab_dropzone(
                 }
             },
         ))
-        .on_drop(cx.listener(move |this, drag: &TerminalTabDrag, window, cx| {
-            cx.stop_propagation();
-            this.drop_terminal_tab(drag, dock, tab_count, window, cx);
-        }))
+        .on_drop(
+            cx.listener(move |this, drag: &TerminalTabDrag, window, cx| {
+                cx.stop_propagation();
+                this.drop_terminal_tab(drag, dock, tab_count, window, cx);
+            }),
+        )
 }
 
 /// Build the Zed-style right-click menu for one terminal tab.
